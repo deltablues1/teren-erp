@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Pregled{% endblock %}
+{% block content %}
+<h1>Pregled</h1>
+
+{% if poruka %}<div class="banner{% if 'Greška' in poruka %} err{% endif %}">{{ poruka }}</div>{% endif %}
+
+<div class="cards">
+  <div class="card"><div class="n">{{ counts.projekti }}</div><div class="l">Aktivni projekti</div></div>
+  <div class="card"><div class="n">{{ counts.artikli }}</div><div class="l">Artikli u katalogu</div></div>
+  <div class="card"><div class="n">{{ counts.cjenici }}</div><div class="l">Cjenici</div></div>
+  <div class="card"><div class="n">{{ counts.za_pregled }}</div><div class="l">Za pregled</div></div>
+</div>
+
+<h2>Projekti</h2>
+
+<details class="novi">
+  <summary>➕ Novo gradilište</summary>
+  <form method="post" action="/projekt/nova" class="formgrid">
+    <input name="naziv" placeholder="Naziv projekta (npr. Lidl Karlovac)" required>
+    <input name="adresa" placeholder="Adresa gradilišta">
+    <input name="investitor" placeholder="Investitor">
+    <input name="izvodac" placeholder="Izvođač (tvoja firma)">
+    <input name="nadzorni" placeholder="Nadzorni inženjer">
+    <input name="broj_dozvole" placeholder="Br. građevinske dozvole">
+    <button type="submit">Kreiraj</button>
+  </form>
+  <p class="muted" style="font-size:13px">Troškovnik dodaješ kasnije na stranici projekta — bez njega je projekt „ključ u ruke".</p>
+</details>
+
+{% if projekti %}
+<table>
+  <tr><th>Naziv</th><th>Tip</th><th>Investitor</th><th>Dnevnik</th><th>Materijali</th><th>Troškovnik</th></tr>
+  {% for p in projekti %}
+  <tr>
+    <td><a class="row" href="/projekt/{{ p.key }}">{{ p.naziv }}</a><br><span class="muted">{{ p.adresa }}</span></td>
+    <td><span class="tag {{ 'obr' if p.tip=='obračunski' else 'kur' }}">{{ p.tip }}</span></td>
+    <td>{{ p.investitor or '—' }}</td>
+    <td>{{ p.n_dnevnik }}</td>
+    <td>{{ p.n_materijali }}</td>
+    <td>{{ p.n_troskovnik }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">Nema projekata.</div>
+{% endif %}
+{% endblock %}

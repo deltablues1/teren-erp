@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Troškovnik — {{ naziv }}{% endblock %}
+{% block content %}
+<a class="back" href="/projekt/{{ key }}">← Natrag na projekt</a>
+<h1>Troškovnik — {{ naziv }}</h1>
+
+{% if poruka %}<div class="banner{% if 'obavezan' in poruka %} err{% endif %}">{{ poruka }}</div>{% endif %}
+
+<p class="muted" style="font-size:13px">
+  „Izvedeno" je automatski zbroj povezanih materijala. Upiši broj za <b>ručni override</b>
+  (prazno = ostaje auto), pa klikni 💾.
+</p>
+
+{% if not t.stavke %}
+<div class="empty">Projekt nema troškovnik. Uvezi ga na stranici projekta („⬆️ Uvezi troškovnik").</div>
+{% else %}
+
+<div class="cards">
+  <div class="card"><div class="n">{{ "%.2f"|format(t.uk_ugovoreno) }} €</div><div class="l">Ugovoreno (ukupno)</div></div>
+  <div class="card"><div class="n">{{ "%.2f"|format(t.uk_izvedeno) }} €</div><div class="l">Izvedeno (iz povezanih materijala)</div></div>
+</div>
+
+{# prazne forme za inline uređivanje/brisanje (HTML5 form-attribute) #}
+{% for st in t.stavke %}{% if not st.je_sekcija %}
+<form id="f{{ st.id }}" method="post" action="/projekt/{{ key }}/troskovnik/stavka/{{ st.id }}"></form>
+<form id="d{{ st.id }}" method="post" action="/projekt/{{ key }}/troskovnik/stavka/{{ st.id }}/obrisi" onsubmit="return confirm('Obrisati ovu stavku troškovnika?');"></form>
+{% endif %}{% endfor %}
+
+<table class="trosk">
+  <tr>
+    <th>Šifra</th><th>Opis</th><th>JM</th><th>Ugovorena</th>
+    <th>Cijena €</th><th>Iznos €</th><th>Izvedeno</th><th></th>
+  </tr>
+  {% for st in t.stavke %}
+  {% if st.je_sekcija %}
+  <tr class="sekc"><td colspan="8">{{ st.sifra }} {{ st.opis }}</td></tr>
+  {% else %}
+  <tr>
+    <td><input form="f{{ st.id }}" name="sifra" value="{{ st.sifra }}" size="6"></td>
+    <td><input form="f{{ st.id }}" name="opis" value="{{ st.opis }}" class="wide"></td>
+    <td><input form="f{{ st.id }}" name="jm" value="{{ st.jm }}" size="4"></td>
+    <td><input form="f{{ st.id }}" name="ugovorena" value="{{ st.ugovorena if st.ugovorena is not none else '' }}" size="7" inputmode="decimal"></td>
+    <td><input form="f{{ st.id }}" name="cijena" value="{{ st.cijena if st.cijena is not none else '' }}" size="8" inputmode="decimal"></td>
+    <td class="num">{{ "%.2f"|format(st.iznos) }}</td>
+    <td>
+      <input form="f{{ st.id }}" name="izvedeno_rucno"
+             value="{{ st.izvedeno_rucno if st.izvedeno_rucno is not none else '' }}"
+             placeholder="{{ st.auto_izvedeno }}" size="6" inputmode="decimal">
+      <div class="hint">{% if st.rucno %}✏️ ručno{% elif st.auto_izvedeno %}auto: {{ st.auto_izvedeno }} {{ st.jm }}{% else %}—{% endif %}</div>
+    </td>
+    <td class="akc">
+      <button form="f{{ st.id }}" type="submit" title="Spremi">💾</button>
+      <button form="d{{ st.id }}" type="submit" class="del" title="Obriši">🗑️</button>
+    </td>
+  </tr>
+  {% endif %}
+  {% endfor %}
+  <tr class="tot">
+    <td colspan="5" style="text-align:right"><b>Ukupno:</b></td>
+    <td class="num"><b>{{ "%.2f"|format(t.uk_ugovoreno) }}</b></td>
+    <td colspan="2"></td>
+  </tr>
+</table>
+
+<h2>Dodaj stavku</h2>
+<form method="post" action="/projekt/{{ key }}/troskovnik/dodaj" class="formgrid">
+  <input name="sifra" placeholder="Šifra" size="6">
+  <input name="opis" placeholder="Opis stavke" required style="min-width:280px">
+  <input name="jm" placeholder="JM" size="4">
+  <input name="ugovorena" placeholder="Količina" size="7" inputmode="decimal">
+  <input name="cijena" placeholder="Cijena €" size="8" inputmode="decimal">
+  <button type="submit">Dodaj</button>
+</form>
+
+<style>
+  table.trosk input { padding:6px 8px; border:1px solid var(--line); border-radius:6px; font-size:13px; width:100%; }
+  table.trosk input.wide { min-width:240px; }
+  table.trosk td { vertical-align:middle; }
+  table.trosk .num { text-align:right; white-space:nowrap; }
+  table.trosk .hint { font-size:11px; color:var(--muted); margin-top:2px; }
+  table.trosk .sekc td { background:#f3f4f6; font-weight:700; color:var(--brand2); }
+  table.trosk .tot td { background:#f9fafb; }
+  table.trosk .akc { white-space:nowrap; }
+  table.trosk .akc button { padding:5px 8px; border:1px solid var(--line); background:#f9fafb;
+                            border-radius:6px; cursor:pointer; font-size:13px; }
+  table.trosk .akc button.del:hover { background:#fef2f2; border-color:#fecaca; }
+</style>
+{% endif %}
+{% endblock %}

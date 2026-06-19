@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ a.naziv }}{% endblock %}
+{% block content %}
+<a class="back" href="/katalog">← Natrag na katalog</a>
+<h1>{{ a.naziv }}</h1>
+{% if spremljeno %}<p class="ok">✓ Spremljeno.</p>{% endif %}
+
+<div class="cards" style="margin-top:12px">
+  <div class="card"><div class="n">{% if a.nabavna is not none %}{{ "%.2f"|format(a.nabavna) }} €{% else %}—{% endif %}</div><div class="l">Nabavna (najniža)</div></div>
+  <div class="card"><div class="n">{% if a.prodajna is not none %}{{ "%.2f"|format(a.prodajna) }} €{% else %}—{% endif %}</div><div class="l">Moja prodajna</div></div>
+  <div class="card"><div class="n">{% if a.marza is not none %}{{ a.marza }} %{% else %}—{% endif %}</div><div class="l">Marža</div></div>
+</div>
+
+<h2>Cijene po dobavljaču</h2>
+{% if a.cijene %}
+<table>
+  <tr><th>Dobavljač</th><th>Cjenik</th><th>Tip</th><th>Šifra dobavljača</th><th>Cijena</th></tr>
+  {% for c in a.cijene %}
+  <tr>
+    <td>{{ c.dobavljac }}</td>
+    <td>{{ c.cjenik }}</td>
+    <td>{{ c.tip }}</td>
+    <td><span class="pill">{{ c.sifra_dobavljaca or '—' }}</span></td>
+    <td>{% if c.cijena is not none %}{{ "%.2f"|format(c.cijena) }} {{ c.valuta }}{% else %}—{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">Nema cijena (artikl nije u nijednom cjeniku).</div>
+{% endif %}
+
+<h2>Uredi artikl</h2>
+<form method="post" action="/artikl/{{ a.id }}" class="form">
+  <div class="frow"><label>Naziv</label><input type="text" name="naziv" value="{{ a.naziv }}"></div>
+  <div class="frow"><label>JM</label><input type="text" name="jm" value="{{ a.jm }}"></div>
+  <div class="frow"><label>Kategorija</label><input type="text" name="kategorija" value="{{ a.kategorija }}"></div>
+  <div class="frow"><label>Proizvođač</label><input type="text" name="proizvodjac" value="{{ a.proizvodjac }}"></div>
+  <div class="frow"><label>Žargon <span class="muted">(odvoji zarezom — pomaže botu prepoznati)</span></label>
+    <input type="text" name="zargon" value="{{ a.zargon }}"></div>
+  <div class="frow"><label>Moja prodajna cijena (€) <span class="muted">(prazno = bez)</span></label>
+    <input type="text" name="prodajna_cijena" value="{% if a.prodajna is not none %}{{ a.prodajna }}{% endif %}"></div>
+  <div class="frow"><label><input type="checkbox" name="treba_pregled" {% if a.treba_pregled %}checked{% endif %}> Treba pregled</label></div>
+  <button type="submit">Spremi</button>
+</form>
+
+<style>
+  .form { background:#fff; border:1px solid var(--line); border-radius:10px; padding:18px; max-width:640px; }
+  .frow { margin-bottom:14px; display:flex; flex-direction:column; gap:5px; }
+  .frow label { font-size:13px; color:#374151; }
+  .frow input[type=text] { padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
+  .form button { padding:10px 18px; border:none; background:var(--brand); color:#fff; border-radius:8px; font-size:14px; cursor:pointer; }
+</style>
+{% endblock %}

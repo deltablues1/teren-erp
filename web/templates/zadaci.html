@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Zadaci{% endblock %}
+{% block content %}
+<h1>Zadaci</h1>
+
+<h2>Otvoreni ({{ zadaci|length }})</h2>
+{% if zadaci %}
+<table>
+  <tr><th>Projekt</th><th>Zadatak</th><th>Za koga</th><th>Rok</th><th>Kreiran</th><th></th></tr>
+  {% for z in zadaci %}
+  <tr>
+    <td><a class="row" href="/projekt/{{ z.projekt_key }}#zadaci">{{ nazivi.get(z.projekt_key, z.projekt_key) }}</a></td>
+    <td>
+      {{ z.tekst }}
+      {% if z.snooze_until %}<div class="muted" style="font-size:12px">⏰ odgođeno do {{ z.snooze_until }}</div>{% endif %}
+      {% for k in z.komentari %}
+      <div class="zkom">💬 <b>{{ k.ime }}</b> ({{ k.created_at }}): {{ k.tekst }}</div>
+      {% endfor %}
+    </td>
+    <td>{{ z.za }}</td>
+    <td>{{ z.rok or '—' }}</td>
+    <td class="muted">{{ z.created_at }}</td>
+    <td>
+      <form method="post" action="/zadatak/{{ z.id }}/zatvori" style="margin:0">
+        <input type="hidden" name="back" value="/zadaci">
+        <button type="submit" class="zclose">✅ Zatvori</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">Nema otvorenih zadataka 👍 Novi zadatak dodaješ na stranici projekta.</div>
+{% endif %}
+
+<h2>Nedavno riješeni</h2>
+{% if gotovi %}
+<table>
+  <tr><th>Projekt</th><th>Zadatak</th><th>Riješio</th><th>Kada</th></tr>
+  {% for g in gotovi %}
+  <tr>
+    <td>{{ nazivi.get(g.projekt_key, g.projekt_key) }}</td>
+    <td>{{ g.tekst }}</td>
+    <td>{{ g.za or '—' }}</td>
+    <td class="muted">{{ g.completed_at }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">Još ništa riješeno.</div>
+{% endif %}
+
+<style>
+  .zkom { font-size:13px; color:var(--muted); margin-top:4px; padding-left:8px; border-left:2px solid var(--line); }
+  .zclose { padding:6px 10px; border:1px solid var(--line); background:#f9fafb; border-radius:8px; cursor:pointer; font-size:13px; }
+  .zclose:hover { background:#dcfce7; }
+</style>
+{% endblock %}

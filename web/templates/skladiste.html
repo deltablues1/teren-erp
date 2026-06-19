@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Skladište{% endblock %}
+{% block content %}
+<h1>Skladište</h1>
+{% if greska %}<p class="warn">⚠️ {{ greska }}</p>{% endif %}
+
+<datalist id="artikli">
+  {% for n in artikli_nazivi %}<option value="{{ n }}">{% endfor %}
+</datalist>
+
+<div class="skl-forms">
+  <form method="post" action="/skladiste/primka" class="skl-form">
+    <h3>📥 Primka</h3>
+    <input list="artikli" name="artikl" placeholder="Artikl (naziv ili šifra)" required>
+    <input name="kolicina" placeholder="Količina" required>
+    <input name="dobavljac" placeholder="Dobavljač (npr. Inaqua)">
+    <input name="dokument" placeholder="Br. otpremnice/računa">
+    <select name="na">
+      <option value="skladiste">→ Skladište</option>
+      {% for p in projekti %}<option value="gradiliste:{{ p.key }}">→ {{ p.naziv }}</option>{% endfor %}
+    </select>
+    <button type="submit">Zaprimi</button>
+  </form>
+
+  <form method="post" action="/skladiste/zaduzi" class="skl-form">
+    <h3>📤 Zaduži</h3>
+    <input list="artikli" name="artikl" placeholder="Artikl (naziv ili šifra)" required>
+    <input name="kolicina" placeholder="Količina" required>
+    <select name="kome" required>
+      <option value="" disabled selected>Kome?</option>
+      <optgroup label="Radnici">
+        {% for r in radnici %}<option value="radnik:{{ r.telegram_id }}">{{ r.ime }}</option>{% endfor %}
+      </optgroup>
+      <optgroup label="Gradilišta">
+        {% for p in projekti %}<option value="gradiliste:{{ p.key }}">{{ p.naziv }}</option>{% endfor %}
+      </optgroup>
+    </select>
+    <input name="napomena" placeholder="Napomena">
+    <button type="submit">Zaduži</button>
+  </form>
+
+  <form method="post" action="/skladiste/povrat" class="skl-form">
+    <h3>↩️ Povrat</h3>
+    <input list="artikli" name="artikl" placeholder="Artikl (naziv ili šifra)" required>
+    <input name="kolicina" placeholder="Količina" required>
+    <select name="od" required>
+      <option value="" disabled selected>Od koga?</option>
+      <optgroup label="Radnici">
+        {% for r in radnici %}<option value="radnik:{{ r.telegram_id }}">{{ r.ime }}</option>{% endfor %}
+      </optgroup>
+      <optgroup label="Gradilišta">
+        {% for p in projekti %}<option value="gradiliste:{{ p.key }}">{{ p.naziv }}</option>{% endfor %}
+      </optgroup>
+    </select>
+    <input name="napomena" placeholder="Napomena">
+    <button type="submit">Vrati</button>
+  </form>
+
+  <form method="post" action="/skladiste/prijenos" class="skl-form">
+    <h3>🔁 Prijenos</h3>
+    <input list="artikli" name="artikl" placeholder="Artikl (naziv ili šifra)" required>
+    <input name="kolicina" placeholder="Količina" required>
+    <select name="od" required>
+      <option value="" disabled selected>Od koga?</option>
+      <optgroup label="Radnici">
+        {% for r in radnici %}<option value="radnik:{{ r.telegram_id }}">{{ r.ime }}</option>{% endfor %}
+      </optgroup>
+      <optgroup label="Gradilišta">
+        {% for p in projekti %}<option value="gradiliste:{{ p.key }}">{{ p.naziv }}</option>{% endfor %}
+      </optgroup>
+    </select>
+    <select name="kome" required>
+      <option value="" disabled selected>Kome?</option>
+      <optgroup label="Radnici">
+        {% for r in radnici %}<option value="radnik:{{ r.telegram_id }}">{{ r.ime }}</option>{% endfor %}
+      </optgroup>
+      <optgroup label="Gradilišta">
+        {% for p in projekti %}<option value="gradiliste:{{ p.key }}">{{ p.naziv }}</option>{% endfor %}
+      </optgroup>
+    </select>
+    <input name="napomena" placeholder="Napomena (npr. „krivo zaduženo")">
+    <button type="submit">Prebaci</button>
+  </form>
+</div>
+<p class="muted" style="font-size:13px">
+  💡 Artikl koji nije u katalogu možeš svejedno upisati slobodnim tekstom — vodi se po opisu.
+</p>
+
+<h2>Stanje skladišta ({{ stanje|length }})</h2>
+{% if stanje %}
+<table>
+  <tr><th>Artikl</th><th>Količina</th></tr>
+  {% for st in stanje %}
+  <tr>
+    <td>{% if st.artikl_id %}<a class="row" href="/artikl/{{ st.artikl_id }}">{{ st.opis }}</a>{% else %}{{ st.opis }} <span class="muted">(nije u katalogu)</span>{% endif %}</td>
+    <td class="{{ 'warn' if st.kolicina < 0 else '' }}">{{ st.kolicina }} {{ st.jm }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">Skladište je prazno — kreni s primkom.</div>
+{% endif %}
+
+<h2>Zaduženja</h2>
+<div class="skl-cols">
+  <div>
+    <h3>👷 Po radniku</h3>
+    {% if zaduzenja.radnici %}
+      {% for z in zaduzenja.radnici %}
+      <div class="skl-card">
+        <b>{{ z.naziv }}</b>
+        <ul>{% for st in z.stavke %}<li class="{{ 'warn' if st.kolicina < 0 else '' }}">{{ st.opis }}: {{ st.kolicina }} {{ st.jm }}</li>{% endfor %}</ul>
+      </div>
+      {% endfor %}
+    {% else %}<div class="empty">Nitko nije zadužen.</div>{% endif %}
+  </div>
+  <div>
+    <h3>🏗️ Po gradilištu</h3>
+    {% if zaduzenja.gradilista %}
+      {% for z in zaduzenja.gradilista %}
+      <div class="skl-card">
+        <b>{{ z.naziv }}</b>
+        <ul>{% for st in z.stavke %}<li class="{{ 'warn' if st.kolicina < 0 else '' }}">{{ st.opis }}: {{ st.kolicina }} {{ st.jm }}</li>{% endfor %}</ul>
+      </div>
+      {% endfor %}
+      <p class="muted" style="font-size:12px">Crveni minus = ugrađeno više nego što je zaprimljeno/zaduženo (materijal mimo evidencije).</p>
+    {% else %}<div class="empty">Nema zaduženja po gradilištu.</div>{% endif %}
+  </div>
+</div>
+
+<h2>Zadnje transakcije</h2>
+{% if promet %}
+<table>
+  <tr><th>Datum</th><th>Tip</th><th>Artikl</th><th>Količina</th><th>Iz</th><th>U</th><th>Dokument / napomena</th></tr>
+  {% for t in promet %}
+  <tr>
+    <td class="muted">{{ t.datum }}</td>
+    <td>{{ {'primka':'📥 primka','zaduzenje':'📤 zaduženje','povrat':'↩️ povrat','prijenos':'🔁 prijenos','potrosnja':'🔧 ugradnja','korekcija':'✏️ korekcija'}.get(t.tip, t.tip) }}</td>
+    <td>{{ t.opis }}</td>
+    <td>{{ t.kolicina }} {{ t.jm }}</td>
+    <td>{{ t.iz }}</td>
+    <td>{{ t.u }}</td>
+    <td class="muted">{{ t.dokument }}{% if t.dokument and t.napomena %} · {% endif %}{{ t.napomena }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">Još nema transakcija.</div>
+{% endif %}
+
+<style>
+  .skl-forms { display:flex; gap:14px; flex-wrap:wrap; }
+  .skl-form { background:#fff; border:1px solid var(--line); border-radius:10px;
+              padding:14px 16px; display:flex; flex-direction:column; gap:8px; flex:1; min-width:250px; }
+  .skl-form h3 { margin:0 0 4px; font-size:15px; }
+  .skl-form input, .skl-form select { padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
+  .skl-form button { padding:8px 14px; border:none; background:var(--brand); color:#fff; border-radius:8px; cursor:pointer; }
+  .skl-cols { display:flex; gap:18px; flex-wrap:wrap; }
+  .skl-cols > div { flex:1; min-width:280px; }
+  .skl-card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin-bottom:10px; }
+  .skl-card ul { margin:6px 0 0; padding-left:18px; }
+  .skl-card li { font-size:14px; }
+</style>
+{% endblock %}

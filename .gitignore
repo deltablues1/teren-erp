@@ -1,0 +1,18 @@
+.env
+secrets/
+data/sessions.json
+data/projekti.json
+data/radnici.json
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.docx
+*.pdf
+!templates/*.docx
+.DS_Store
+*.log
+generated/
+# klijentski primjeri (veliki Excel/PDF fileovi, poslovni podaci)
+primjeri/

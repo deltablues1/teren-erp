@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Za pregled{% endblock %}
+{% block content %}
+<h1>Za pregled — nepoznati materijali</h1>
+<p class="muted">Materijali koje je radnik javio, a bot ih nije prepoznao u katalogu.
+Dodaj ih u katalog ili spoji s postojećim artiklom — bot će ih ubuduće prepoznati.</p>
+
+{% if stavke %}
+<table>
+  <tr><th>Opis</th><th>JM</th><th>Puta</th><th>Akcija</th></tr>
+  {% for st in stavke %}
+  <tr>
+    <td>{{ st.opis }}</td>
+    <td>{{ st.jm or '—' }}</td>
+    <td>{{ st.broj }}×</td>
+    <td>
+      <form method="post" action="/pregled/dodaj" style="display:inline">
+        <input type="hidden" name="opis" value="{{ st.opis }}">
+        <input type="hidden" name="jm" value="{{ st.jm }}">
+        <button type="submit" class="btn-sm">➕ Dodaj u katalog</button>
+      </form>
+      <a class="btn-sm ghost" href="/pregled/spoji?opis={{ st.opis|urlencode }}&jm={{ st.jm|urlencode }}">🔗 Spoji s postojećim</a>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">🎉 Nema nepoznatih materijala — sve je prepoznato!</div>
+{% endif %}
+
+<style>
+  .btn-sm { padding:5px 10px; border:none; background:var(--brand); color:#fff; border-radius:7px;
+            font-size:13px; cursor:pointer; text-decoration:none; }
+  .btn-sm.ghost { background:#fff; color:var(--brand); border:1px solid var(--brand); margin-left:6px; }
+</style>
+{% endblock %}

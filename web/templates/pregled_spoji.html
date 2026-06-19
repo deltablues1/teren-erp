@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Spoji materijal{% endblock %}
+{% block content %}
+<a class="back" href="/pregled">← Natrag na red za pregled</a>
+<h1>Spoji „{{ opis }}"</h1>
+<p class="muted">Odaberi artikl iz kataloga na koji se ovaj materijal odnosi.
+Opis će se dodati u žargon artikla pa će ga bot ubuduće sam prepoznati.</p>
+
+<form class="search" method="get" action="/pregled/spoji">
+  <input type="hidden" name="opis" value="{{ opis }}">
+  <input type="hidden" name="jm" value="{{ jm }}">
+  <input type="text" name="q" value="{{ q or opis }}" placeholder="Pretraži katalog…">
+  <button type="submit">Traži</button>
+</form>
+
+{% if artikli %}
+<table>
+  <tr><th>Šifra</th><th>Naziv</th><th>JM</th><th>Kategorija</th><th></th></tr>
+  {% for a in artikli %}
+  <tr>
+    <td><span class="pill">{{ a.sifra or '—' }}</span></td>
+    <td>{{ a.naziv }}</td>
+    <td>{{ a.jm or '—' }}</td>
+    <td>{{ a.kategorija or '—' }}</td>
+    <td>
+      <form method="post" action="/pregled/spoji" style="margin:0">
+        <input type="hidden" name="opis" value="{{ opis }}">
+        <input type="hidden" name="artikl_id" value="{{ a.id }}">
+        <button type="submit" class="btn-sm">Spoji ovdje</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">Nema rezultata — probaj drugu riječ ili se vrati i „Dodaj u katalog".</div>
+{% endif %}
+
+<style>
+  .btn-sm { padding:5px 10px; border:none; background:var(--brand); color:#fff; border-radius:7px; font-size:13px; cursor:pointer; }
+</style>
+{% endblock %}

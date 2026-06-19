@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+{% block title %}{{ p.naziv }}{% endblock %}
+{% block content %}
+<a class="back" href="/">← Natrag na pregled</a>
+<h1>{{ p.naziv }} <span class="tag {{ 'obr' if p.tip=='obračunski' else 'kur' }}">{{ p.tip }}</span></h1>
+<p class="muted">
+  {{ p.adresa or '' }}{% if p.investitor %} · Investitor: {{ p.investitor }}{% endif %}
+  {% if p.izvodac %} · Izvođač: {{ p.izvodac }}{% endif %}
+</p>
+
+{% if poruka %}<div class="banner{% if 'Greška' in poruka %} err{% endif %}">{{ poruka }}</div>{% endif %}
+
+<details class="novi"{% if job %} open{% endif %}>
+  <summary>⬆️ Uvezi troškovnik (.xls, .xlsx){% if p.n_troskovnik %} — trenutno {{ p.n_troskovnik }} stavki{% endif %}</summary>
+  {% if job %}
+  <div id="uvoz-status" class="banner" data-status-url="/projekt/{{ p.key }}/troskovnik/status/{{ job }}">
+    ⏳ Uvoz troškovnika je pokrenut… (može potrajati nekoliko minuta — ostavi stranicu otvorenu)
+  </div>
+  {% endif %}
+  <form method="post" action="/projekt/{{ p.key }}/troskovnik/uvoz" enctype="multipart/form-data" class="formgrid">
+    <input type="file" name="datoteka" accept=".xls,.xlsx" required>
+    <button type="submit">Uvezi i zamijeni</button>
+  </form>
+  <p class="muted" style="font-size:13px">AI parsira stavke u <b>pozadini</b> (nekoliko minuta za veće troškovnike) i <b>zamjenjuje</b> postojeći. Napredak se prikazuje gore.</p>
+</details>
+{% if job %}
+<script>
+(function () {
+  var box = document.getElementById("uvoz-status");
+  if (!box) return;
+  var url = box.dataset.statusUrl;
+  function tick() {
+    fetch(url, { headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (j) {
+        if (j.status === "running") {
+          var p = j.postotak || 0;
+          var t = j.total ? " (" + j.done + "/" + j.total + " dijelova, " + p + "%)" : "";
+          box.textContent = "⏳ Uvoz troškovnika u tijeku…" + t;
+          setTimeout(tick, 3000);
+        } else if (j.status === "done") {
+          box.classList.add("ok");
+          box.textContent = "✅ Troškovnik uvezen: " + j.n + " stavki. Osvježavam…";
+          setTimeout(function () { location.href = "/projekt/{{ p.key }}"; }, 1200);
+        } else if (j.status === "error") {
+          box.classList.add("err");
+          box.textContent = "❌ Greška pri uvozu: " + (j.greska || "nepoznata");
+        } else {
+          box.textContent = "Uvoz nije pronađen (možda je server restartan). Pokušaj ponovno.";
+        }
+      })
+      .catch(function () { setTimeout(tick, 5000); });
+  }
+  tick();
+})();
+</script>
+{% endif %}
+
+<h2>Dokumenti</h2>
+<div class="docs">
+  {% if p.n_troskovnik %}
+  <a class="btn" href="/projekt/{{ p.key }}/troskovnik">📋 Troškovnik ({{ p.n_troskovnik }} stavki)</a>
+  {% endif %}
+  <form method="get" action="/projekt/{{ p.key }}/dnevnik" target="_blank">
+    <label class="muted" style="font-size:13px">Od</label>
+    <input type="date" name="od" value="{{ danas }}">
+    <label class="muted" style="font-size:13px">do</label>
+    <input type="date" name="do" value="{{ danas }}">
+    <button type="submit">📄 Dnevnik (.docx)</button>
+    <button type="submit" name="sve" value="1" title="Generiraj dnevnik za sve dane projekta">📚 Cijeli projekt</button>
+  </form>
+  {% if p.tip == 'obračunski' %}
+  <a class="btn" href="/projekt/{{ p.key }}/knjiga" target="_blank">📘 Knjiga (.docx)</a>
+  {% else %}
+  <span class="muted">Knjiga je dostupna samo za obračunske projekte (s troškovnikom).</span>
+  {% endif %}
+  <a class="btn" href="/projekt/{{ p.key }}/izvoz">📊 Izvoz (Excel)</a>
+</div>
+<p class="muted" style="font-size:13px">📊 Izvoz složi cijeli projekt u Excel s 5 listova (Troškovnik, Dnevnik s originalnim porukama, Materijali, Radnici, Vrijeme) — za arhivu, dijeljenje na Drive ili kao temelj dnevnika/knjige.</p>
+
+{% if obracun %}
+<h2>Obračun i situacije</h2>
+<div class="cards">
+  <div class="card"><div class="n">{{ "%.0f"|format(obracun.ugovoreno) }} €</div><div class="l">Ugovoreno{% if obracun.rabat_posto %} (−{{ obracun.rabat_posto }}% rabat){% endif %}</div></div>
+  <div class="card"><div class="n">{{ "%.0f"|format(obracun.izvedeno) }} €</div><div class="l">Izvedeno do sada</div></div>
+  <div class="card"><div class="n">{{ obracun.postotak }} %</div><div class="l">Izvedenost</div></div>
+  <div class="card"><div class="n">{{ obracun.n_situacija }}</div><div class="l">Situacija</div></div>
+</div>
+{% if situacije %}
+<table>
+  <tr><th>Situacija</th><th>Datum</th><th>Status</th><th>Stavki</th><th>Kumulativ</th><th>Iznos situacije</th><th></th></tr>
+  {% for s in situacije %}
+  <tr>
+    <td><b>{{ s.broj }}.</b></td>
+    <td>{{ s.datum or '—' }}</td>
+    <td>{% if s.status=='ovjerena' %}<span class="ok">ovjerena</span>{% else %}<span class="warn">{{ s.status }}</span>{% endif %}</td>
+    <td>{{ s.n_stavki }}</td>
+    <td>{{ "%.2f"|format(s.kumulativ_vrijednost) }} €</td>
+    <td><b>{{ "%.2f"|format(s.iznos_situacije) }} €</b></td>
+    <td><a class="row" href="/projekt/{{ p.key }}/knjiga?situacija={{ s.broj }}" target="_blank">📘 .docx</a></td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">Troškovnik je uvezen, ali još nema unesenih situacija.</div>
+{% endif %}
+{% endif %}
+
+<h2 id="zadaci">Zadaci ({{ zadaci|length }} otvorenih)</h2>
+<form method="post" action="/projekt/{{ p.key }}/zadatak" class="ztask-form">
+  <input type="text" name="tekst" placeholder="Novi zadatak (npr. „Provjeri ormar u podrumu prije betoniranja")" required>
+  <select name="radnik">
+    <option value="">👥 Svi radnici</option>
+    {% for r in radnici %}<option value="{{ r.telegram_id }}">{{ r.ime }}</option>{% endfor %}
+  </select>
+  <input type="date" name="rok" title="Rok (opcionalno)">
+  <button type="submit">➕ Dodaj i pošalji</button>
+</form>
+{% if zadaci %}
+<table>
+  <tr><th>Zadatak</th><th>Za koga</th><th>Rok</th><th>Kreiran</th><th></th></tr>
+  {% for z in zadaci %}
+  <tr>
+    <td>
+      {{ z.tekst }}
+      {% if z.snooze_until %}<div class="muted" style="font-size:12px">⏰ odgođeno do {{ z.snooze_until }}</div>{% endif %}
+      {% for k in z.komentari %}
+      <div class="zkom">💬 <b>{{ k.ime }}</b> ({{ k.created_at }}): {{ k.tekst }}</div>
+      {% endfor %}
+    </td>
+    <td>{{ z.za }}</td>
+    <td>{{ z.rok or '—' }}</td>
+    <td class="muted">{{ z.created_at }}</td>
+    <td>
+      <form method="post" action="/zadatak/{{ z.id }}/zatvori" style="margin:0">
+        <input type="hidden" name="back" value="/projekt/{{ p.key }}#zadaci">
+        <button type="submit" class="zclose">✅ Zatvori</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">Nema otvorenih zadataka.</div>
+{% endif %}
+{% if not radnici %}
+<p class="muted" style="font-size:13px">⚠️ Na projektu nema radnika — zadatak se sprema, ali push nema kome otići (dodaj radnike sa /dodaj_radnika u botu).</p>
+{% endif %}
+<style>
+  .ztask-form { display:flex; gap:8px; flex-wrap:wrap; background:#fff; border:1px solid var(--line);
+                border-radius:10px; padding:12px 14px; margin-bottom:12px; }
+  .ztask-form input[type=text] { flex:1; min-width:260px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; }
+  .ztask-form select, .ztask-form input[type=date] { padding:8px 10px; border:1px solid var(--line); border-radius:8px; }
+  .ztask-form button { padding:8px 14px; border:none; background:var(--brand); color:#fff; border-radius:8px; cursor:pointer; }
+  .zkom { font-size:13px; color:var(--muted); margin-top:4px; padding-left:8px; border-left:2px solid var(--line); }
+  .zclose { padding:6px 10px; border:1px solid var(--line); background:#f9fafb; border-radius:8px; cursor:pointer; font-size:13px; }
+  .zclose:hover { background:#dcfce7; }
+</style>
+
+<h2>Materijali ({{ p.materijali|length }}) · ukupno {{ "%.2f"|format(p.ukupno_vrijednost) }} €</h2>
+{% if p.tip == 'obračunski' %}
+<p>
+  <a class="row" href="/projekt/{{ p.key }}/povezi">🔗 Poveži materijale s troškovnikom</a>
+  {% if p.n_nepovezani %}<span class="warn">— {{ p.n_nepovezani }} nepovezanih</span>{% else %}<span class="ok">— sve povezano</span>{% endif %}
+</p>
+{% endif %}
+{% if p.materijali %}
+<table>
+  <tr><th>Datum</th><th>Opis</th><th>Količina</th><th>Radnik</th><th>Pozicija troškovnika</th><th>Cijena</th><th>Vrijednost</th></tr>
+  {% for m in p.materijali %}
+  <tr>
+    <td>{{ m.datum }}</td>
+    <td>{{ m.opis }}</td>
+    <td>{{ m.kolicina }} {{ m.jm }}</td>
+    <td>{{ m.radnik }}</td>
+    <td>
+      {% if m.povezano %}
+        <span class="ok">🔗 {% if m.trosk_sifra %}{{ m.trosk_sifra }}{% endif %}</span>
+        {% if m.trosk_opis %}<div class="muted" style="font-size:12px">{{ m.trosk_opis }}</div>{% endif %}
+      {% else %}
+        <span class="warn">⚠️ nije povezano</span>
+      {% endif %}
+    </td>
+    <td>{% if m.cijena is not none %}{{ "%.2f"|format(m.cijena) }} €{% else %}—{% endif %}</td>
+    <td>{% if m.vrijednost is not none %}{{ "%.2f"|format(m.vrijednost) }} €{% else %}—{% endif %}</td>
+  </tr>
+  {% endfor %}
+  <tr><td colspan="6" style="text-align:right"><b>Ukupno (prepoznati materijal):</b></td><td><b>{{ "%.2f"|format(p.ukupno_vrijednost) }} €</b></td></tr>
+</table>
+{% else %}
+<div class="empty">Još nema upisanih materijala.</div>
+{% endif %}
+
+<style>
+  .docs { display:flex; gap:14px; align-items:center; flex-wrap:wrap; background:#fff;
+          border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
+  .docs form { display:flex; gap:8px; align-items:center; margin:0; }
+  .docs input[type=date] { padding:7px 9px; border:1px solid var(--line); border-radius:8px; }
+  .docs button, .docs .btn { padding:8px 14px; border:none; background:var(--brand); color:#fff;
+          border-radius:8px; font-size:14px; cursor:pointer; text-decoration:none; }
+</style>
+
+<h2>Dnevnik ({{ p.dnevnik|length }})</h2>
+{% if p.dnevnik %}
+<table>
+  <tr><th>Datum</th><th>Radnik</th><th>Opis rada</th><th>Lokacija</th><th>Sati</th></tr>
+  {% for d in p.dnevnik %}
+  <tr>
+    <td>{{ d.datum }}</td>
+    <td>{{ d.radnik }}</td>
+    <td>{{ d.opis }}</td>
+    <td>{{ d.lokacija or '—' }}</td>
+    <td>{{ d.sati if d.sati is not none else (d.vrijeme_rada or '—') }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">Još nema dnevničkih unosa.</div>
+{% endif %}
+{% endblock %}

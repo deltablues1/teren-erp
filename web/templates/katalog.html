@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Katalog{% endblock %}
+{% block content %}
+<h1>Katalog</h1>
+
+{% if poruka %}<div class="banner{% if 'Greška' in poruka %} err{% endif %}">{{ poruka }}</div>{% endif %}
+
+<details class="novi">
+  <summary>⬆️ Uvezi cjenik (.xlsx, .xls, .pdf)</summary>
+  <form method="post" action="/katalog/uvoz" enctype="multipart/form-data" class="formgrid">
+    <input name="dobavljac" placeholder="Dobavljač (npr. Inaqua)" required>
+    <input type="date" name="datum" title="Datum cjenika (opcionalno)">
+    <select name="tip">
+      <option value="nabavni">nabavni</option>
+      <option value="prodajni">prodajni</option>
+    </select>
+    <input type="text" name="valuta" value="EUR" size="5">
+    <input type="file" name="datoteka" accept=".xls,.xlsx,.pdf" required>
+    <button type="submit">Uvezi</button>
+  </form>
+  <p class="muted" style="font-size:13px">Parsiranje traje 30–90 s (PDF ide kroz AI). Pričekaj — stranica se osvježi kad završi.</p>
+</details>
+
+<h2>Cjenici ({{ cjenici|length }})</h2>
+{% if cjenici %}
+<table>
+  <tr><th>Naziv</th><th>Dobavljač</th><th>Tip</th><th>Datum</th><th>Stavki</th></tr>
+  {% for c in cjenici %}
+  <tr>
+    <td>{{ c.naziv }}</td>
+    <td>{{ c.partner }}</td>
+    <td>{{ c.tip }}</td>
+    <td>{{ c.datum }}</td>
+    <td>{{ c.n_stavki }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">Nema uvezenih cjenika.</div>
+{% endif %}
+
+<h2>Artikli</h2>
+<p>
+  <a class="row" href="/katalog">Svi</a> ·
+  <a class="row" href="/katalog?pregled=1">Za pregled{% if pregled %} (aktivno){% endif %}</a>
+</p>
+<form class="search" method="get" action="/katalog">
+  {% if pregled %}<input type="hidden" name="pregled" value="1">{% endif %}
+  <input type="text" name="q" value="{{ q }}" placeholder="Pretraži po nazivu, žargonu ili šifri…">
+  <button type="submit">Traži</button>
+</form>
+<p class="muted">
+  {% if q %}Rezultata za „{{ q }}": {{ total }}{% else %}Ukupno artikala: {{ total }}{% endif %}
+  {% if total > artikli|length %} (prikazano prvih {{ artikli|length }}){% endif %}
+</p>
+{% if artikli %}
+<table>
+  <tr><th>Šifra</th><th>Naziv</th><th>JM</th><th>Kategorija</th><th>Status</th></tr>
+  {% for a in artikli %}
+  <tr>
+    <td><span class="pill">{{ a.sifra or '—' }}</span></td>
+    <td><a class="row" href="/artikl/{{ a.id }}">{{ a.naziv }}</a>{% if a.zargon %}<br><span class="muted">žargon: {{ a.zargon }}</span>{% endif %}</td>
+    <td>{{ a.jm or '—' }}</td>
+    <td>{{ a.kategorija or '—' }}</td>
+    <td>{% if a.treba_pregled %}<span class="warn">za pregled</span>{% else %}<span class="ok">✓</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">Nema rezultata.</div>
+{% endif %}
+{% endblock %}

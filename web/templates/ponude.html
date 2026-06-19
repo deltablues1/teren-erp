@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Ponude{% endblock %}
+{% block content %}
+<h1>Ponude</h1>
+
+<form method="post" action="/ponude/nova" class="pon-form">
+  <input name="kupac" placeholder="Kupac (naziv firme ili osobe)" required>
+  <input name="predmet" placeholder="Predmet ponude (npr. „Elektroinstalacije — stambena zgrada")">
+  <button type="submit">➕ Nova ponuda</button>
+</form>
+
+{% if ponude %}
+<table>
+  <tr><th>Broj</th><th>Kupac</th><th>Predmet</th><th>Datum</th><th>Status</th><th>Stavki</th><th>Ukupno (s PDV)</th></tr>
+  {% for p in ponude %}
+  <tr>
+    <td><a class="row" href="/ponuda/{{ p.id }}">{{ p.broj }}</a></td>
+    <td>{{ p.kupac_naziv }}</td>
+    <td>{{ p.predmet or '—' }}</td>
+    <td class="muted">{{ p.datum }}</td>
+    <td><span class="pstat pstat-{{ p.status }}">{{ p.status }}</span></td>
+    <td>{{ p.n_stavki }}</td>
+    <td><b>{{ "%.2f"|format(p.ukupno) }} €</b></td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<div class="empty">Još nema ponuda — kreiraj prvu gore.</div>
+{% endif %}
+
+<style>
+  .pon-form { display:flex; gap:8px; flex-wrap:wrap; background:#fff; border:1px solid var(--line);
+              border-radius:10px; padding:12px 14px; margin-bottom:16px; }
+  .pon-form input { flex:1; min-width:220px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; }
+  .pon-form button { padding:8px 14px; border:none; background:var(--brand); color:#fff; border-radius:8px; cursor:pointer; }
+  .pstat { padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600; background:#f3f4f6; }
+  .pstat-poslana { background:#dbeafe; color:#1e40af; }
+  .pstat-prihvacena { background:#dcfce7; color:#166534; }
+  .pstat-odbijena { background:#fee2e2; color:#991b1b; }
+</style>
+{% endblock %}

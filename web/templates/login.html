@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Teren — Prijava</title>
+  <style>
+    body { margin:0; font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;
+           background:#0f766e; display:flex; min-height:100vh; align-items:center; justify-content:center; }
+    .box { background:#fff; padding:32px; border-radius:12px; width:320px; box-shadow:0 10px 30px rgba(0,0,0,.2); }
+    h1 { font-size:20px; margin:0 0 4px; color:#0f766e; }
+    p { color:#6b7280; font-size:13px; margin:0 0 20px; }
+    label { font-size:13px; color:#374151; }
+    input { width:100%; padding:10px 12px; margin:6px 0 16px; border:1px solid #e5e7eb;
+            border-radius:8px; font-size:14px; }
+    button { width:100%; padding:11px; border:none; background:#0f766e; color:#fff;
+             border-radius:8px; font-size:15px; cursor:pointer; }
+    .err { color:#dc2626; font-size:13px; margin-bottom:12px; }
+  </style>
+</head>
+<body>
+  <form class="box" method="post" action="/login">
+    <h1>🏗️ Teren</h1>
+    <p>Admin panel — prijava</p>
+    {% if greska %}<div class="err">{{ greska }}</div>{% endif %}
+    <label>Lozinka</label>
+    <input type="password" name="lozinka" autofocus>
+    <button type="submit">Prijava</button>
+  </form>
+</body>
+</html>

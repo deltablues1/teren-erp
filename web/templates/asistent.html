@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Asistent{% endblock %}
+{% block content %}
+<h1>Asistent</h1>
+<p class="muted" style="margin-top:-8px">
+  Pitaj o projektima, materijalu, dnevniku ili troškovniku.
+  Npr. „koliko kabela je utrošeno na Kući Horvat", „što se radilo na gradilištu
+  prošli tjedan", „koliko je od ugovorenog izvedeno".
+</p>
+
+<div id="chat" style="background:var(--card);border:1px solid var(--line);border-radius:10px;
+     padding:14px;min-height:320px;max-height:55vh;overflow-y:auto;margin-bottom:12px"></div>
+
+<form id="f" class="search" style="display:flex;gap:8px">
+  <input id="q" type="text" placeholder="Postavi pitanje…" autocomplete="off"
+         style="flex:1;max-width:none" required>
+  <button id="send" type="submit">Pošalji</button>
+</form>
+
+<style>
+  .msg { margin:8px 0; display:flex; }
+  .msg .bub { padding:9px 13px; border-radius:12px; font-size:14px; line-height:1.45;
+              max-width:80%; white-space:pre-wrap; }
+  .msg.korisnik { justify-content:flex-end; }
+  .msg.korisnik .bub { background:var(--brand); color:#fff; border-bottom-right-radius:3px; }
+  .msg.asistent .bub { background:#f1f5f9; color:var(--ink); border-bottom-left-radius:3px; }
+  .msg.asistent.greska .bub { background:#fef2f2; color:#b91c1c; }
+  .tipka { color:var(--muted); font-style:italic; }
+</style>
+
+<script>
+const chat = document.getElementById('chat');
+const form = document.getElementById('f');
+const q = document.getElementById('q');
+const send = document.getElementById('send');
+const povijest = [];   // [{uloga, tekst}]
+
+function dodaj(uloga, tekst, greska) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg ' + uloga + (greska ? ' greska' : '');
+  const bub = document.createElement('div');
+  bub.className = 'bub';
+  bub.textContent = tekst;
+  wrap.appendChild(bub);
+  chat.appendChild(wrap);
+  chat.scrollTop = chat.scrollHeight;
+  return wrap;
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const tekst = q.value.trim();
+  if (!tekst) return;
+  dodaj('korisnik', tekst);
+  povijest.push({uloga: 'korisnik', tekst});
+  q.value = '';
+  q.focus();
+  send.disabled = true;
+  const cek = dodaj('asistent', 'razmišljam…');
+  cek.querySelector('.bub').classList.add('tipka');
+  try {
+    const r = await fetch('/asistent/pitaj', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({poruke: povijest}),
+    });
+    const data = await r.json();
+    const odgovor = data.odgovor || 'Nema odgovora.';
+    cek.remove();
+    dodaj('asistent', odgovor, !r.ok);
+    if (r.ok) povijest.push({uloga: 'asistent', tekst: odgovor});
+  } catch (err) {
+    cek.remove();
+    dodaj('asistent', 'Greška u komunikaciji: ' + err, true);
+  } finally {
+    send.disabled = false;
+  }
+});
+</script>
+{% endblock %}

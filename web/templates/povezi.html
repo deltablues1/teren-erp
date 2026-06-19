@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Poveži materijale — {{ p.naziv }}{% endblock %}
+{% block content %}
+<a class="back" href="/projekt/{{ p.key }}">← Natrag na projekt</a>
+<h1>Poveži materijale s troškovnikom</h1>
+<p class="muted">{{ p.naziv }} · {{ p.n_troskovnik }} stavki troškovnika</p>
+
+{% if poruka %}<div class="banner{% if 'Greška' in poruka %} err{% endif %}">{{ poruka }}</div>{% endif %}
+
+{% if not izbor %}
+<div class="empty">Projekt nema troškovnik — prvo ga uvezi na stranici projekta.</div>
+{% elif not grupe %}
+<div class="empty">Nema materijala za povezivanje.</div>
+{% else %}
+<p class="muted" style="font-size:13px">
+  Svaki materijal s terena veži na poziciju troškovnika — tako se puni „izvedeno" u obračunu i knjizi.
+  <b>Prijedlog</b> (po ključnim riječima) je predodabran; provjeri i po potrebi promijeni, pa spremi.
+</p>
+<form method="post" action="/projekt/{{ p.key }}/povezi">
+<table>
+  <tr><th>Materijal s terena</th><th>Količina</th><th>Stavka troškovnika</th><th>Status</th></tr>
+  {% for g in grupe %}
+  {% set sel = g.trenutni_id if g.trenutni_id else g.prijedlog_id %}
+  <tr>
+    <td>
+      {{ g.opis }}
+      <input type="hidden" name="opis_{{ loop.index0 }}" value="{{ g.opis }}">
+      <div class="muted" style="font-size:12px">{{ g.broj }}× unosa</div>
+    </td>
+    <td>{{ g.kolicina }} {{ g.jm }}</td>
+    <td>
+      <select name="veza_{{ loop.index0 }}">
+        <option value="">— ne povezuj —</option>
+        {% for o in izbor %}
+        <option value="{{ o.id }}" {% if o.id == sel %}selected{% endif %}>{{ o.label }}</option>
+        {% endfor %}
+      </select>
+    </td>
+    <td>
+      {% if g.povezano %}<span class="ok">✓ povezano</span>
+      {% elif g.djelomicno %}<span class="warn">djelomično</span>
+      {% elif g.prijedlog_id %}<span class="muted">prijedlog</span>
+      {% else %}<span class="warn">nepovezano</span>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+<p style="margin-top:14px"><button type="submit" class="savebtn">💾 Spremi sve veze</button></p>
+</form>
+<style>
+  td select { padding:7px 9px; border:1px solid var(--line); border-radius:8px; font-size:14px; max-width:420px; }
+  .savebtn { padding:10px 20px; border:none; background:var(--brand); color:#fff; border-radius:8px; cursor:pointer; font-size:15px; }
+</style>
+{% endif %}
+{% endblock %}
