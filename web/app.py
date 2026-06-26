@@ -312,6 +312,19 @@ def povezi_page(request: Request, key: str, poruka: str = ""):
     })
 
 
+@app.post("/projekt/{key}/povezi/ai")
+def povezi_ai(request: Request, key: str):
+    """AI batch-prijedlog: vrati {opis: stavka_id} za nepovezane materijale."""
+    if not _authed(request):
+        return JSONResponse({"greska": "Niste prijavljeni."}, status_code=401)
+    try:
+        mapping = data.ai_predlozi_veze(key)
+    except Exception as e:
+        log.exception("AI prijedlog grešaka za %s", key)
+        return JSONResponse({"greska": str(e)}, status_code=500)
+    return JSONResponse({"prijedlozi": mapping})
+
+
 @app.post("/projekt/{key}/povezi")
 async def povezi_save(request: Request, key: str):
     if not _authed(request):
@@ -454,14 +467,14 @@ def katalog_uvoz(
 
 
 @app.get("/artikl/{artikl_id}", response_class=HTMLResponse)
-def artikl_view(request: Request, artikl_id: int, spremljeno: int = 0):
+def artikl_view(request: Request, artikl_id: int, spremljeno: int = 0, poruka: str = ""):
     if not _authed(request):
         return _redirect_login()
     a = data.artikl_detail(artikl_id)
     if not a:
         return HTMLResponse("Artikl ne postoji.", status_code=404)
     return templates.TemplateResponse(request, "artikl.html", {
-        "a": a, "spremljeno": bool(spremljeno), "aktivno": "katalog",
+        "a": a, "spremljeno": bool(spremljeno), "poruka": poruka, "aktivno": "katalog",
     })
 
 
@@ -503,6 +516,60 @@ def pregled_dodaj(request: Request, opis: str = Form(...), jm: str = Form("")):
         return _redirect_login()
     data.dodaj_u_katalog(opis, jm)
     return RedirectResponse(url="/pregled", status_code=303)
+
+
+@app.post("/artikl/{artikl_id}/ukloni-materijale")
+def artikl_ukloni_materijale(request: Request, artikl_id: int):
+    if not _authed(request):
+        return _redirect_login()
+    n = data.ukloni_iz_kataloga(artikl_id)
+    msg = f"Razvezano {n} materijala — pojavljuju se opet na stranici Za pregled." if n else "Nema vezanih materijala."
+    return _redir(f"/artikl/{artikl_id}", msg)
+
+
+@app.post("/artikl/{artikl_id}/obrisi")
+def artikl_obrisi(request: Request, artikl_id: int):
+    if not _authed(request):
+        return _redirect_login()
+    ok = data.obrisi_artikl(artikl_id)
+    return _redir("/katalog", "Artikl obrisan iz kataloga." if ok else "Artikl nije pronađen.")
+
+
+@app.post("/pregled/vrati")
+def pregled_vrati(request: Request, projekt_key: str = Form(...), opis: str = Form(...)):
+    """Makni katalog šifru I troškovnik vezu s materijala — pojavi se na /pregled."""
+    if not _authed(request):
+        return _redirect_login()
+    n = data.vrati_na_pregled_po_opisu(projekt_key, opis)
+    return _redir("/pregled", f"Materijal vraćen na pregled ({n} zapisa)." if n else "Nije nađen.")
+
+
+@app.get("/projekt/{key}/obracun", response_class=HTMLResponse)
+def obracun_page(request: Request, key: str, poruka: str = ""):
+    if not _authed(request):
+        return _redirect_login()
+    ob = data.obracun_po_stavkama(key)
+    if not ob["stavke"] and not ob["uk_ugovoreno"]:
+        return _redir(f"/projekt/{key}", "Projekt nema troškovnik ili nema izvedenih materijala.")
+    return templates.TemplateResponse(request, "obracun.html", {
+        "ob": ob,
+        "poruka": poruka,
+        "aktivno": "dashboard",
+    })
+
+
+@app.post("/troskovnik/{stavka_id}/izvedeno")
+def troskovnik_izvedeno_save(
+    request: Request,
+    stavka_id: int,
+    izvedeno_rucno: str = Form(""),
+    back: str = Form("/"),
+):
+    if not _authed(request):
+        return _redirect_login()
+    key = data.set_izvedeno_rucno(stavka_id, izvedeno_rucno)
+    url = back if back.startswith("/projekt/") else (f"/projekt/{key}/obracun" if key else "/")
+    return _redir(url, "Izvedeno ažurirano.")
 
 
 @app.get("/pregled/spoji", response_class=HTMLResponse)

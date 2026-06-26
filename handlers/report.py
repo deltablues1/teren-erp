@@ -6,6 +6,8 @@ import logging
 import tempfile
 from pathlib import Path
 
+from anthropic import APITimeoutError as _AnthropicTimeout
+from openai import APITimeoutError as _OpenAITimeout
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
@@ -19,6 +21,13 @@ from services import (
 
 log = logging.getLogger(__name__)
 
+# Kad AI poziv istekne (timeout), terencu javljamo prijateljsku poruku umjesto
+# sirove iznimke — najčešće je riječ o sporoj/prekinutoj vezi, ne o pravoj grešci.
+_AI_TIMEOUT_ERRORS = (_AnthropicTimeout, _OpenAITimeout)
+_PORUKA_SPORA_VEZA = (
+    "⏳ Veza sa serverom je trenutno spora. Pričekaj koju sekundu pa pokušaj ponovno."
+)
+
 # Whisper API odbija datoteke veće od 25 MB
 MAX_VOICE_BYTES = 24 * 1024 * 1024
 
@@ -28,8 +37,13 @@ def _esc(value: object) -> str:
     return escape_markdown(str(value), version=1)
 
 
+_PREVIEW_MAX = 3800  # Telegram limit je 4096; buffer za sigurnost
+
+
 def _format_preview(parsed: claude_parser.ParsedReport, prijepis: str) -> str:
-    lines = [f"📝 _„{_esc(prijepis)}\"_", ""]
+    # Skrati prijepis — radnik zna što je napisao, dug tekst ruši poruku
+    kratki = prijepis[:280] + ("…" if len(prijepis) > 280 else "")
+    lines = [f"📝 _„{_esc(kratki)}\"_", ""]
     lines.append(f"*Rad:* {_esc(parsed.opis_rada) or '—'}")
     if parsed.lokacija:
         lines.append(f"*Lokacija:* {_esc(parsed.lokacija)}")
@@ -45,8 +59,9 @@ def _format_preview(parsed: claude_parser.ParsedReport, prijepis: str) -> str:
     if parsed.radnici_spomenuti:
         lines.append(f"*S njim radili:* {_esc(', '.join(parsed.radnici_spomenuti))}")
     if parsed.materijali:
+        _MAX_MAT = 20
         lines.append("*Materijali:*")
-        for m in parsed.materijali:
+        for m in parsed.materijali[:_MAX_MAT]:
             stavka = (
                 f"  • {_esc(m.get('opis', ''))}: "
                 f"{_esc(m.get('kolicina', ''))} {_esc(m.get('jm', ''))}"
@@ -58,6 +73,8 @@ def _format_preview(parsed: claude_parser.ParsedReport, prijepis: str) -> str:
             elif m.get("treba_u_katalog"):
                 stavka += " (⚠️ nije u katalogu)"
             lines.append(stavka)
+        if len(parsed.materijali) > _MAX_MAT:
+            lines.append(f"  _... i još {len(parsed.materijali) - _MAX_MAT} stavki_")
     if parsed.problemi:
         lines.append("*Problemi/napomene:*")
         for p in parsed.problemi:
@@ -78,7 +95,10 @@ def _format_preview(parsed: claude_parser.ParsedReport, prijepis: str) -> str:
             "ℹ️ _Ima li problema ili ti treba materijal? "
             "Odgovori na ovu poruku (reply) pa dodam._"
         )
-    return "\n".join(lines)
+    full = "\n".join(lines)
+    if len(full) > _PREVIEW_MAX:
+        full = full[:_PREVIEW_MAX] + "\n_…(prikaz skraćen)_"
+    return full
 
 
 def _confirm_keyboard(pending_id: str) -> InlineKeyboardMarkup:
@@ -131,6 +151,10 @@ async def _process_text(
             troskovnik=troskovnik,
             prethodni_kontekst=prethodni_kontekst,
         )
+    except _AI_TIMEOUT_ERRORS:
+        log.exception("Timeout Claude parsinga")
+        await update.message.reply_text(_PORUKA_SPORA_VEZA)
+        return
     except Exception as e:
         log.exception("Greška Claude parsinga")
         await update.message.reply_text(
@@ -162,11 +186,21 @@ async def _process_text(
     })
 
     prijepis = prijepis_za_prikaz or tekst
-    preview_msg = await update.message.reply_text(
-        _format_preview(parsed, prijepis),
-        parse_mode="Markdown",
-        reply_markup=_confirm_keyboard(pending_id),
-    )
+    preview_tekst = _format_preview(parsed, prijepis)
+    try:
+        preview_msg = await update.message.reply_text(
+            preview_tekst,
+            parse_mode="Markdown",
+            reply_markup=_confirm_keyboard(pending_id),
+        )
+    except Exception as e:
+        log.warning("Preview s Markdownom pao (%s), šaljem bez formatiranja", e)
+        # Fallback: plain text bez Markdown (sigurno radi bez obzira na sadržaj)
+        plain = preview_tekst.replace("*", "").replace("_", "").replace("`", "")
+        preview_msg = await update.message.reply_text(
+            plain,
+            reply_markup=_confirm_keyboard(pending_id),
+        )
     # reply na preview poruku = ispravak/dopuna (bez klikanja na ✏️)
     sessions.link_preview(pending_id, update.message.chat_id, preview_msg.message_id)
 
@@ -245,6 +279,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         rezultat = await asyncio.to_thread(
             claude_parser.procitaj_sliku, image_bytes, "image/jpeg", caption
         )
+    except _AI_TIMEOUT_ERRORS:
+        log.exception("Timeout čitanja slike")
+        await update.message.reply_text(_PORUKA_SPORA_VEZA)
+        return
     except Exception as e:
         log.exception("Greška čitanja slike")
         await update.message.reply_text(f"Ne mogu pročitati sliku: {e}")
@@ -302,6 +340,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await file.download_to_drive(custom_path=tmp_path)
         try:
             prijepis = await asyncio.to_thread(transcription.transcribe, tmp_path)
+        except _AI_TIMEOUT_ERRORS:
+            log.exception("Timeout Whisper transkripcije")
+            await update.message.reply_text(_PORUKA_SPORA_VEZA)
+            return
         except Exception as e:
             log.exception("Greška Whisper transkripcije")
             await update.message.reply_text(

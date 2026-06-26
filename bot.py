@@ -4,12 +4,12 @@ Pokreni sa:  python bot.py
 """
 from __future__ import annotations
 
-import asyncio
 import logging
-from datetime import datetime, time, timedelta
+from datetime import time
 from logging.handlers import RotatingFileHandler
 
 from telegram import Update
+from telegram.error import NetworkError
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -40,41 +40,32 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("teren-bot")
 
 
-async def _podsjetnik_loop(app: Application) -> None:
-    """Dnevni podsjetnik za zadatke. Pri startu pošalje dospjele ODGOĐENE
-    (idempotentno — snooze se briše nakon slanja), a zatim svaki dan u
-    SNOOZE_DO_SATI i one s rokom danas/prekoračenim."""
+async def _job_startup(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Pri startu pošalji dospjele ODGOĐENE podsjetnike (idempotentno —
+    snooze se briše nakon slanja)."""
     try:
-        n = await zadaci.posalji_podsjetnike(app.bot, include_rok=False)
+        n = await zadaci.posalji_podsjetnike(context.bot, include_rok=False)
         if n:
             log.info("Podsjetnici pri startu: %d zadataka", n)
     except Exception:
         log.exception("Greška podsjetnika pri startu")
 
-    while True:
-        now = datetime.now()
-        target = datetime.combine(now.date(), time(hour=SNOOZE_DO_SATI))
-        if target <= now:
-            target += timedelta(days=1)
-        await asyncio.sleep((target - now).total_seconds())
-        try:
-            n = await zadaci.posalji_podsjetnike(app.bot, include_rok=True)
-            log.info("Dnevni podsjetnici: %d zadataka", n)
-        except Exception:
-            log.exception("Greška dnevnih podsjetnika")
 
-
-async def _post_init(app: Application) -> None:
-    app.create_task(_podsjetnik_loop(app))
+async def _job_dnevni(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Svaki dan u SNOOZE_DO_SATI: odgođeni + oni s rokom danas/prekoračenim."""
+    try:
+        n = await zadaci.posalji_podsjetnike(context.bot, include_rok=True)
+        log.info("Dnevni podsjetnici: %d zadataka", n)
+    except Exception:
+        log.exception("Greška dnevnih podsjetnika")
 
 
 def build_app() -> Application:
-    app = (
-        Application.builder()
-        .token(TELEGRAM_BOT_TOKEN)
-        .post_init(_post_init)
-        .build()
-    )
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+
+    # Podsjetnici preko PTB JobQueue (čisto se gasi, bez ručne asyncio petlje).
+    app.job_queue.run_once(_job_startup, when=2)
+    app.job_queue.run_daily(_job_dnevni, time=time(hour=SNOOZE_DO_SATI))
 
     # Komande dostupne svima (radnici + admin)
     app.add_handler(CommandHandler("start", start.cmd_start))
@@ -111,7 +102,16 @@ def build_app() -> Application:
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Globalni error handler - logira i javlja korisniku umjesto tihog pada."""
-    log.exception("Neuhvaćena greška", exc_info=context.error)
+    err = context.error
+    # Prolazni mrežni prekidi (DNS/getaddrinfo, timeout) pri pollanju — PTB se
+    # sam oporavlja i Telegram čuva poruke. Logiraj kratko, bez tracebacka.
+    if isinstance(err, NetworkError):
+        log.warning(
+            "Mreža privremeno nedostupna (%s) — pokušavam ponovno.",
+            type(err).__name__,
+        )
+        return
+    log.exception("Neuhvaćena greška", exc_info=err)
     if isinstance(update, Update) and update.effective_message:
         try:
             await update.effective_message.reply_text(

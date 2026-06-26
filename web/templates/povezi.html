@@ -12,16 +12,28 @@
 {% elif not grupe %}
 <div class="empty">Nema materijala za povezivanje.</div>
 {% else %}
+
+{% set nepovezani = grupe | rejectattr("povezano") | list %}
+{% set povezani = grupe | selectattr("povezano") | list %}
+
+<div id="ai-banner" style="display:none" class="banner"></div>
+
+<form method="post" action="/projekt/{{ p.key }}/povezi" id="povezi-form">
+
+{% if nepovezani %}
+<h2 style="margin-top:20px">Nepovezano ({{ nepovezani|length }})</h2>
 <p class="muted" style="font-size:13px">
-  Svaki materijal s terena veži na poziciju troškovnika — tako se puni „izvedeno" u obračunu i knjizi.
-  <b>Prijedlog</b> (po ključnim riječima) je predodabran; provjeri i po potrebi promijeni, pa spremi.
+  Odaberi poziciju troškovnika za svaki materijal. Prijedlog je predodabran automatski (po ključnim riječima).
+  Klikni <b>🤖 AI prijedlozi</b> za bolje automatske prijedloge.
+  <button type="button" id="ai-btn" class="savebtn" style="margin-left:12px;padding:7px 14px;font-size:13px">
+    🤖 AI prijedlozi
+  </button>
 </p>
-<form method="post" action="/projekt/{{ p.key }}/povezi">
-<table>
+<table id="nepov-table">
   <tr><th>Materijal s terena</th><th>Količina</th><th>Stavka troškovnika</th><th>Status</th></tr>
-  {% for g in grupe %}
-  {% set sel = g.trenutni_id if g.trenutni_id else g.prijedlog_id %}
-  <tr>
+  {% for g in nepovezani %}
+  {% set sel = g.prijedlog_id %}
+  <tr data-opis="{{ g.opis | e }}">
     <td>
       {{ g.opis }}
       <input type="hidden" name="opis_{{ loop.index0 }}" value="{{ g.opis }}">
@@ -29,7 +41,7 @@
     </td>
     <td>{{ g.kolicina }} {{ g.jm }}</td>
     <td>
-      <select name="veza_{{ loop.index0 }}">
+      <select name="veza_{{ loop.index0 }}" class="trsel">
         <option value="">— ne povezuj —</option>
         {% for o in izbor %}
         <option value="{{ o.id }}" {% if o.id == sel %}selected{% endif %}>{{ o.label }}</option>
@@ -37,19 +49,109 @@
       </select>
     </td>
     <td>
-      {% if g.povezano %}<span class="ok">✓ povezano</span>
-      {% elif g.djelomicno %}<span class="warn">djelomično</span>
-      {% elif g.prijedlog_id %}<span class="muted">prijedlog</span>
+      {% if g.djelomicno %}<span class="warn">djelomično</span>
+      {% elif g.prijedlog_id %}<span class="muted">prijedlog ▶</span>
       {% else %}<span class="warn">nepovezano</span>{% endif %}
     </td>
   </tr>
   {% endfor %}
 </table>
-<p style="margin-top:14px"><button type="submit" class="savebtn">💾 Spremi sve veze</button></p>
+{% endif %}
+
+{% if povezani %}
+<details style="margin-top:20px">
+  <summary style="cursor:pointer;font-weight:600;font-size:16px">
+    Već povezano ({{ povezani|length }}) — klikni za prikaz/izmjenu
+  </summary>
+  <p class="muted" style="font-size:13px;margin-top:6px">
+    Možeš promijeniti vezu ili je ukloniti odabirom „— ne povezuj —".
+  </p>
+  <table>
+    <tr><th>Materijal s terena</th><th>Količina</th><th>Stavka troškovnika</th><th>Status</th></tr>
+    {% for g in povezani %}
+    {% set idx = nepovezani|length + loop.index0 %}
+    {% set sel = g.trenutni_id %}
+    <tr>
+      <td>
+        {{ g.opis }}
+        <input type="hidden" name="opis_{{ idx }}" value="{{ g.opis }}">
+        <div class="muted" style="font-size:12px">{{ g.broj }}× unosa · {{ g.trenutni_label[:50] }}{% if g.trenutni_label|length > 50 %}…{% endif %}</div>
+      </td>
+      <td>{{ g.kolicina }} {{ g.jm }}</td>
+      <td>
+        <select name="veza_{{ idx }}" class="trsel">
+          <option value="">— ne povezuj —</option>
+          {% for o in izbor %}
+          <option value="{{ o.id }}" {% if o.id == sel %}selected{% endif %}>{{ o.label }}</option>
+          {% endfor %}
+        </select>
+      </td>
+      <td><span class="ok">✓ povezano</span></td>
+    </tr>
+    {% endfor %}
+  </table>
+</details>
+{% endif %}
+
+<p style="margin-top:16px"><button type="submit" class="savebtn">💾 Spremi sve veze</button></p>
 </form>
+
+<script>
+document.getElementById("ai-btn").addEventListener("click", function() {
+  var btn = this;
+  var banner = document.getElementById("ai-banner");
+  btn.disabled = true;
+  btn.textContent = "⏳ Čekam AI...";
+  banner.style.display = "";
+  banner.className = "banner";
+  banner.textContent = "AI analizira materijale i troškovnik...";
+
+  fetch("/projekt/{{ p.key }}/povezi/ai", {method: "POST"})
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.greska) {
+        banner.className = "banner err";
+        banner.textContent = "Greška: " + data.greska;
+        btn.disabled = false;
+        btn.textContent = "🤖 AI prijedlozi";
+        return;
+      }
+      var prijedlozi = data.prijedlozi || {};
+      var rows = document.querySelectorAll("#nepov-table tr[data-opis]");
+      var n = 0;
+      rows.forEach(function(row) {
+        var opis = row.getAttribute("data-opis");
+        var sid = prijedlozi[opis];
+        if (sid == null) return;
+        var sel = row.querySelector("select.trsel");
+        if (!sel) return;
+        for (var i = 0; i < sel.options.length; i++) {
+          if (sel.options[i].value == String(sid)) {
+            sel.selectedIndex = i;
+            n++;
+            break;
+          }
+        }
+      });
+      banner.className = "banner ok";
+      banner.textContent = "AI popunio " + n + " prijedloga — provjeri i spremi!";
+      btn.textContent = "🤖 AI prijedlozi";
+      btn.disabled = false;
+    })
+    .catch(function(e) {
+      banner.className = "banner err";
+      banner.textContent = "Greška mreže: " + e;
+      btn.disabled = false;
+      btn.textContent = "🤖 AI prijedlozi";
+    });
+});
+</script>
+
 <style>
   td select { padding:7px 9px; border:1px solid var(--line); border-radius:8px; font-size:14px; max-width:420px; }
   .savebtn { padding:10px 20px; border:none; background:var(--brand); color:#fff; border-radius:8px; cursor:pointer; font-size:15px; }
+  .savebtn:disabled { opacity:.6; cursor:not-allowed; }
+  details > summary { padding:8px 0; border-top:1px solid var(--line); margin-top:8px; }
 </style>
 {% endif %}
 {% endblock %}

@@ -10,7 +10,8 @@ from config import OPENAI_API_KEY
 
 log = logging.getLogger(__name__)
 
-_client = OpenAI(api_key=OPENAI_API_KEY)
+# 120 s jer audio upload zna biti veći; default SDK timeout (~10 min) je predug
+_client = OpenAI(api_key=OPENAI_API_KEY, timeout=120.0)
 
 WHISPER_PROMPT = (
     "Razgovor o električarskim radovima na gradilištu na hrvatskom jeziku. "

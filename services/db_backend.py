@@ -771,7 +771,7 @@ def find_troskovnik_candidates(
     prijedlog za povezivanje (jeftin, bez AI-ja)."""
     tokens = [
         t for t in re.split(r"[^0-9a-zžšđčćA-ZĐŠŽČĆ]+", (opis or "").lower())
-        if len(t) >= 3 and t not in _STOP_TOKENI
+        if len(t) >= 2 and t not in _STOP_TOKENI
     ]
     if not tokens:
         return []

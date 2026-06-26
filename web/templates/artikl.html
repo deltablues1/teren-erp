@@ -3,6 +3,7 @@
 {% block content %}
 <a class="back" href="/katalog">← Natrag na katalog</a>
 <h1>{{ a.naziv }}</h1>
+{% if poruka %}<div class="banner{% if 'Greška' in poruka %} err{% endif %}">{{ poruka }}</div>{% endif %}
 {% if spremljeno %}<p class="ok">✓ Spremljeno.</p>{% endif %}
 
 <div class="cards" style="margin-top:12px">
@@ -29,6 +30,26 @@
 <div class="empty">Nema cijena (artikl nije u nijednom cjeniku).</div>
 {% endif %}
 
+{% if a.n_materijala %}
+<div class="banner" style="margin-top:12px">
+  📦 Ovaj artikl je vezan na <b>{{ a.n_materijala }} materijala</b> s terena (po šifri {{ a.sifra }}).
+  <form method="post" action="/artikl/{{ a.id }}/ukloni-materijale" style="display:inline;margin-left:10px">
+    <button type="submit" class="btn-danger" onclick="return confirm('Razvezati svih {{ a.n_materijala }} materijala? Pojavit će se opet na stranici Za pregled.')">
+      ↩ Razvezi materijale
+    </button>
+  </form>
+</div>
+{% endif %}
+
+<div style="margin-top:10px;margin-bottom:4px">
+  <form method="post" action="/artikl/{{ a.id }}/obrisi" style="display:inline">
+    <button type="submit" class="btn-danger"
+      onclick="return confirm('Obrisati artikl {% if a.naziv %}{{ a.naziv | replace("'", "") }}{% endif %} iz kataloga? {% if a.cijene %}UPOZORENJE: ima {{ a.cijene|length }} cijena u cjenicima — one se gube.{% endif %} {% if a.n_materijala %}Materijali se razvezuju iz kataloga.{% endif %}')">
+      🗑 Obriši artikl iz kataloga
+    </button>
+  </form>
+</div>
+
 <h2>Uredi artikl</h2>
 <form method="post" action="/artikl/{{ a.id }}" class="form">
   <div class="frow"><label>Naziv</label><input type="text" name="naziv" value="{{ a.naziv }}"></div>
@@ -49,5 +70,7 @@
   .frow label { font-size:13px; color:#374151; }
   .frow input[type=text] { padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
   .form button { padding:10px 18px; border:none; background:var(--brand); color:#fff; border-radius:8px; font-size:14px; cursor:pointer; }
+  .btn-danger { padding:6px 12px; border:none; background:#dc2626; color:#fff; border-radius:7px; font-size:13px; cursor:pointer; }
+  .btn-danger:hover { background:#b91c1c; }
 </style>
 {% endblock %}

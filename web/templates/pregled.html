@@ -1,15 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Za pregled{% endblock %}
 {% block content %}
-<h1>Za pregled — nepoznati materijali</h1>
-<p class="muted">Materijali koje je radnik javio, a bot ih nije prepoznao u katalogu.
-Dodaj ih u katalog ili spoji s postojećim artiklom — bot će ih ubuduće prepoznati.</p>
+<h1>Za pregled — nepovezani materijali</h1>
+<p class="muted">Materijali koje je radnik javio, a nisu niti u katalogu niti vezani na troškovnik.
+Dodaj ih u katalog, spoji s postojećim artiklom, ili idi direktno na stranicu projekta i poveži s troškovnikom.</p>
 
 {% if stavke %}
 <table>
-  <tr><th>Opis</th><th>JM</th><th>Puta</th><th>Akcija</th></tr>
+  <tr><th>Projekt</th><th>Opis</th><th>JM</th><th>Puta</th><th>Akcija</th></tr>
   {% for st in stavke %}
   <tr>
+    <td>
+      <a href="/projekt/{{ st.projekt_key }}" class="proj-link">{{ st.projekt_naziv }}</a>
+      {% if st.has_troskovnik %}
+      <div style="margin-top:4px">
+        <a class="btn-sm trlink" href="/projekt/{{ st.projekt_key }}/povezi">🔗 Poveži s troškovnikom</a>
+      </div>
+      {% endif %}
+    </td>
     <td>{{ st.opis }}</td>
     <td>{{ st.jm or '—' }}</td>
     <td>{{ st.broj }}×</td>
@@ -19,18 +27,21 @@ Dodaj ih u katalog ili spoji s postojećim artiklom — bot će ih ubuduće prep
         <input type="hidden" name="jm" value="{{ st.jm }}">
         <button type="submit" class="btn-sm">➕ Dodaj u katalog</button>
       </form>
-      <a class="btn-sm ghost" href="/pregled/spoji?opis={{ st.opis|urlencode }}&jm={{ st.jm|urlencode }}">🔗 Spoji s postojećim</a>
+      <a class="btn-sm ghost" href="/pregled/spoji?opis={{ st.opis|urlencode }}&jm={{ st.jm|urlencode }}">🔍 Spoji s artiklom</a>
     </td>
   </tr>
   {% endfor %}
 </table>
 {% else %}
-<div class="empty">🎉 Nema nepoznatih materijala — sve je prepoznato!</div>
+<div class="empty">Nema nepovezanih materijala — sve je prepoznato ili vezano na troškovnik!</div>
 {% endif %}
 
 <style>
   .btn-sm { padding:5px 10px; border:none; background:var(--brand); color:#fff; border-radius:7px;
-            font-size:13px; cursor:pointer; text-decoration:none; }
+            font-size:13px; cursor:pointer; text-decoration:none; display:inline-block; }
   .btn-sm.ghost { background:#fff; color:var(--brand); border:1px solid var(--brand); margin-left:6px; }
+  .btn-sm.trlink { background:#059669; font-size:12px; padding:4px 8px; }
+  .proj-link { font-weight:600; color:var(--brand); text-decoration:none; font-size:14px; }
+  .proj-link:hover { text-decoration:underline; }
 </style>
 {% endblock %}

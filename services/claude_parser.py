@@ -13,7 +13,8 @@ from config import ANTHROPIC_API_KEY, CLAUDE_MODEL
 
 log = logging.getLogger(__name__)
 
-_client = Anthropic(api_key=ANTHROPIC_API_KEY)
+# timeout bounda najgori slučaj: ako poziv zapne, nit se ne vrti 10 min (SDK default)
+_client = Anthropic(api_key=ANTHROPIC_API_KEY, timeout=60.0)
 
 
 @dataclass
@@ -91,9 +92,12 @@ PARSE_TOOL = {
             "datum_rada": {
                 "type": "string",
                 "description": (
-                    "Datum izvršenja u formatu YYYY-MM-DD. Prazno ako radnik "
-                    "ne navodi (tada se podrazumijeva današnji dan). Primjeri: "
-                    "'jučer' → izračunaj jučerašnji datum, 'u ponedjeljak' → null."
+                    "Datum izvršenja u formatu YYYY-MM-DD. "
+                    "Prazno ako radnik uopće ne navodi datum (tada se podrazumijeva današnji dan). "
+                    "KRITIČNO: ako radnik napiše datum BEZ godine (npr. '25.6.', '25/6', '25.06'), "
+                    "uvijek koristi TEKUĆU godinu iz system prompta (npr. 2026-06-25, NE 2025-06-25). "
+                    "Primjeri: 'jučer' → jučerašnji datum s tekućom godinom; "
+                    "'u ponedjeljak' → zadnji ponedjeljak s tekućom godinom."
                 ),
             },
             "vrijeme_rada": {
@@ -218,7 +222,13 @@ PARSE_TOOL = {
 
 
 def _build_system_prompt(troskovnik: list[dict[str, Any]] | None) -> str:
+    from datetime import datetime as _dt
+    today_str = _dt.now().strftime("%Y-%m-%d")
+    year_str = _dt.now().strftime("%Y")
     base = (
+        f"Danas je {today_str} (tekuća godina: {year_str}). "
+        "VAŽNO za datume: kada radnik navede datum bez godine (npr. '25.6.', '25/6'), "
+        f"uvijek pretpostavi tekuću godinu {year_str}. Nikad ne koristiti prošle godine. "
         "Ti si asistent koji parsira izvještaje električara s gradilišta na hrvatskom jeziku. "
         "Razumiješ stručni žargon ('petica' = NYM 3x2.5, 'trojka' = NYM 3x1.5, "
         "'crijevo' = instalacijska cijev, 'doza' = razvodna kutija itd.). "
@@ -312,7 +322,8 @@ def parse_report(
             except (TypeError, ValueError):
                 sati = None
             # sanity check za datum: ako Claude javi datum izvan ±90 dana od danas,
-            # vjerojatno je halucinacija (npr. kriva godina) → ignoriraj
+            # vjerojatno je kriva godina → zamijeni godinom tekuće; ako i dalje
+            # izvan ±90 dana, ignoriraj (default = today)
             datum_raw = (data.get("datum_rada") or "").strip()
             datum_valid = ""
             if datum_raw:
@@ -323,10 +334,19 @@ def parse_report(
                     if abs((d - today).days) <= 90:
                         datum_valid = datum_raw
                     else:
-                        log.warning(
-                            "Claude datum_rada %s je izvan ±90 dana (danas=%s), ignoriram",
-                            datum_raw, today,
-                        )
+                        # pokušaj zamijeniti samo godinu tekućom
+                        fixed = d.replace(year=today.year)
+                        if abs((fixed - today).days) <= 90:
+                            log.warning(
+                                "Claude datum_rada %s ima krivu godinu, ispravljam na %s",
+                                datum_raw, fixed,
+                            )
+                            datum_valid = fixed.strftime("%Y-%m-%d")
+                        else:
+                            log.warning(
+                                "Claude datum_rada %s je izvan ±90 dana (danas=%s), ignoriram",
+                                datum_raw, today,
+                            )
                 except ValueError:
                     pass
             return ParsedReport(

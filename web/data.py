@@ -345,6 +345,10 @@ def artikl_detail(artikl_id: int) -> dict[str, Any] | None:
         marza = None
         if nabavna and prodajna:
             marza = round((prodajna - nabavna) / nabavna * 100, 1)
+        n_materijala = s.scalar(
+            select(func.count()).select_from(Materijal)
+            .where(Materijal.sifra_stavke == (a.sifra or ""))
+        ) or 0 if a.sifra else 0
         return {
             "id": a.id, "sifra": a.sifra, "naziv": a.naziv, "jm": a.jm,
             "kategorija": a.kategorija, "zargon": a.zargon_aliasi,
@@ -353,6 +357,7 @@ def artikl_detail(artikl_id: int) -> dict[str, Any] | None:
             "nabavna": round(nabavna, 2) if nabavna is not None else None,
             "prodajna": round(prodajna, 2) if prodajna is not None else None,
             "marza": marza,
+            "n_materijala": n_materijala,
         }
 
 
@@ -410,15 +415,57 @@ def set_prodajna_cijena(artikl_id: int, cijena) -> None:
 
 
 def unmatched_materijali() -> list[dict[str, Any]]:
-    """Nepoznati materijali (bez šifre) grupirani po opisu — red 'za pregled'."""
+    """Nepoznati materijali (bez katalog šifre I bez troškovnik veze), grupirani
+    po (projekt_key, opis). Vraća projekt info i flag je li projekt obračunski."""
     with db.session() as s:
         rows = s.execute(
-            select(Materijal.opis, Materijal.jm, func.count(), func.max(Materijal.projekt_key))
-            .where((Materijal.sifra_stavke == "") | (Materijal.sifra_stavke.is_(None)))
-            .group_by(Materijal.opis, Materijal.jm)
-            .order_by(func.count().desc())
+            select(Materijal.opis, Materijal.jm, Materijal.projekt_key, func.count())
+            .where(
+                (Materijal.sifra_stavke == "") | (Materijal.sifra_stavke.is_(None)),
+                Materijal.troskovnik_stavka_id.is_(None),
+            )
+            .group_by(Materijal.opis, Materijal.jm, Materijal.projekt_key)
+            .order_by(Materijal.projekt_key, func.count().desc())
         ).all()
-        return [{"opis": o, "jm": j or "", "broj": n, "projekt": p} for o, j, n, p in rows]
+        keys = {r[2] for r in rows if r[2]}
+        trosk_po_projektu: dict[str, int] = {}
+        nazivi: dict[str, str] = {}
+        if keys:
+            for p in s.scalars(select(Projekt).where(Projekt.key.in_(keys))).all():
+                nazivi[p.key] = p.naziv
+            for pk, cnt in s.execute(
+                select(TroskovnikStavka.projekt_key, func.count())
+                .where(TroskovnikStavka.projekt_key.in_(keys))
+                .group_by(TroskovnikStavka.projekt_key)
+            ).all():
+                trosk_po_projektu[pk] = cnt
+
+        return [
+            {
+                "opis": o,
+                "jm": j or "",
+                "broj": n,
+                "projekt_key": pk,
+                "projekt_naziv": nazivi.get(pk, pk),
+                "has_troskovnik": trosk_po_projektu.get(pk, 0) > 0,
+            }
+            for o, j, pk, n in rows
+        ]
+
+
+def vrati_na_pregled_po_opisu(projekt_key: str, opis: str) -> int:
+    """Razvezi materijal (po opisu + projektu) iz kataloga I iz troškovnika —
+    vrati ga na /pregled da se može ručno povezati. Vraća broj ažuriranih."""
+    with db.session() as s:
+        n = 0
+        for m in s.scalars(select(Materijal).where(
+            Materijal.projekt_key == projekt_key,
+            Materijal.opis == opis,
+        )).all():
+            m.sifra_stavke = ""
+            m.troskovnik_stavka_id = None
+            n += 1
+        return n
 
 
 def _link_opis(s, opis: str, artikl) -> int:
@@ -433,6 +480,48 @@ def _link_opis(s, opis: str, artikl) -> int:
         m.sifra_stavke = artikl.sifra
         n += 1
     return n
+
+
+def ukloni_iz_kataloga(artikl_id: int) -> int:
+    """Razveže sve materijale koji su vezani na taj artikl (briše sifra_stavke).
+    Vraća broj razvezanih materijala. Artikl sam ostaje (možda ima cijene)."""
+    with db.session() as s:
+        a = s.get(Artikl, artikl_id)
+        if not a or not a.sifra:
+            return 0
+        sifra = a.sifra
+        n = 0
+        for m in s.scalars(
+            select(Materijal).where(Materijal.sifra_stavke == sifra)
+        ).all():
+            m.sifra_stavke = ""
+            n += 1
+        return n
+
+
+def obrisi_artikl(artikl_id: int) -> bool:
+    """Obriši artikl iz kataloga (i sve njegove CjenikStavka). Vraća True ako
+    je obrisan. Materijali koji su bili vezani na njega dobivaju sifra_stavke=''
+    i troskovnik_stavka_id=NULL — pojavljuju se na /pregled za ručno povezivanje."""
+    with db.session() as s:
+        a = s.get(Artikl, artikl_id)
+        if not a:
+            return False
+        sifra = a.sifra or ""
+        # razveži materijale: makni i katalog šifru i troskovnik vezu
+        if sifra:
+            for m in s.scalars(
+                select(Materijal).where(Materijal.sifra_stavke == sifra)
+            ).all():
+                m.sifra_stavke = ""
+                m.troskovnik_stavka_id = None
+        # obrisi cjenike stavke tog artikla
+        for cs in s.scalars(
+            select(CjenikStavka).where(CjenikStavka.artikl_id == artikl_id)
+        ).all():
+            s.delete(cs)
+        s.delete(a)
+        return True
 
 
 def dodaj_u_katalog(opis: str, jm: str = "") -> int:
@@ -661,3 +750,179 @@ def postavi_troskovnik_vezu(
             m.troskovnik_stavka_id = troskovnik_stavka_id
             n += 1
         return n
+
+
+def ai_predlozi_veze(projekt_key: str) -> dict[str, int | None]:
+    """LLM batch-matching: za svaki nepovezani materijal predloži troškovničku
+    stavku. Vraća {opis: troskovnik_stavka_id | None}."""
+    import json
+    import anthropic
+    from config import ANTHROPIC_API_KEY, CLAUDE_MODEL
+
+    with db.session() as s:
+        mats = s.execute(
+            select(Materijal.opis, Materijal.jm).distinct()
+            .where(
+                Materijal.projekt_key == projekt_key,
+                Materijal.troskovnik_stavka_id.is_(None),
+            )
+        ).all()
+        if not mats:
+            return {}
+        stavke = s.scalars(
+            select(TroskovnikStavka)
+            .where(TroskovnikStavka.projekt_key == projekt_key,
+                   TroskovnikStavka.tip != "sekcija")
+            .order_by(TroskovnikStavka.redoslijed)
+        ).all()
+        if not stavke:
+            return {}
+        trosk_lines = "\n".join(
+            f"ID:{st.id} [{st.sifra or '-'}] {st.opis} ({st.jm or '-'})"
+            for st in stavke
+        )
+        mat_lines = "\n".join(
+            f"- {m.opis} ({m.jm or 'JM?'})"
+            for m in mats
+        )
+        valid_ids = {st.id for st in stavke}
+
+    prompt = (
+        "Ti si stručnjak za građevinski obračun elektroinstalacija.\n\n"
+        "MATERIJALI S TERENA (javio radnik):\n"
+        f"{mat_lines}\n\n"
+        "STAVKE TROŠKOVNIKA:\n"
+        f"{trosk_lines}\n\n"
+        "Za svaki materijal s terena navedi ID troškovničke stavke koja NAJVJEROJATNIJE "
+        "odgovara (isti materijal, ista vrsta). Ako nema jasne veze, vrati null.\n\n"
+        "Odgovori ISKLJUČIVO JSON objektom (ključ = točan opis materijala, vrijednost = ID ili null):\n"
+        '{"opis materijala": ID_ili_null, ...}'
+    )
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    msg = client.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=2048,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    text = msg.content[0].text.strip()
+    if "```" in text:
+        text = text.split("```")[1].lstrip("json\n").rstrip("`").strip()
+    mapping = json.loads(text)
+    result: dict[str, int | None] = {}
+    for opis, val in mapping.items():
+        if val is None:
+            result[opis] = None
+        else:
+            try:
+                sid = int(val)
+                result[opis] = sid if sid in valid_ids else None
+            except (TypeError, ValueError):
+                result[opis] = None
+    return result
+
+
+def obracun_po_stavkama(projekt_key: str) -> dict[str, Any]:
+    """Za /obracun stranicu: troškovničke stavke s izvedenim materijalima.
+    Svaka stavka nosi per-day breakdown i agregat. Samo stavke s izvedenim > 0
+    ili s barem jednim materijalnim zapisom."""
+    from services import db_backend
+
+    auto = db_backend.izvedeno_po_stavci_id(projekt_key)
+
+    with db.session() as s:
+        stavke_db = s.scalars(
+            select(TroskovnikStavka)
+            .where(TroskovnikStavka.projekt_key == projekt_key)
+            .order_by(TroskovnikStavka.redoslijed, TroskovnikStavka.id)
+        ).all()
+
+        mats_db = s.scalars(
+            select(Materijal)
+            .where(
+                Materijal.projekt_key == projekt_key,
+                Materijal.troskovnik_stavka_id.is_not(None),
+            )
+            .order_by(
+                Materijal.troskovnik_stavka_id,
+                Materijal.datum.desc(),
+                Materijal.id.desc(),
+            )
+        ).all()
+
+        mats_by: dict[int, list[dict]] = {}
+        for m in mats_db:
+            mats_by.setdefault(m.troskovnik_stavka_id, []).append({
+                "datum": m.datum.strftime("%d.%m.%Y") if m.datum else "—",
+                "radnik": m.radnik or "—",
+                "opis": m.opis or "",
+                "kolicina": float(m.kolicina or 0),
+                "jm": m.jm or "",
+                "strujni_krug": m.strujni_krug or "",
+            })
+
+        out: list[dict] = []
+        uk_ugovoreno = uk_izvedeno = 0.0
+
+        for st in stavke_db:
+            if st.tip == "sekcija":
+                continue
+            mats = mats_by.get(st.id, [])
+            auto_q = auto.get(st.id, 0.0)
+
+            if st.izvedeno_rucno is not None:
+                izvedeno = float(st.izvedeno_rucno)
+            elif st.id in auto:
+                izvedeno = auto_q
+            else:
+                izvedeno = float(st.izvedeno or 0.0)
+
+            if izvedeno == 0.0 and not mats:
+                continue
+
+            q = float(st.ugovorena_kolicina or 0)
+            c = float(st.jedinicna_cijena or 0)
+            uk_ugovoreno += q * c
+            uk_izvedeno += izvedeno * c
+
+            out.append({
+                "id": st.id,
+                "sifra": st.sifra or "",
+                "opis": st.opis or "",
+                "jm": st.jm or "",
+                "ugovorena": q,
+                "cijena": c,
+                "auto_izvedeno": round(auto_q, 3),
+                "izvedeno_rucno": st.izvedeno_rucno,
+                "rucno": st.izvedeno_rucno is not None,
+                "izvedeno": round(izvedeno, 3),
+                "iznos_ugovoreno": round(q * c, 2),
+                "iznos_izvedeno": round(izvedeno * c, 2),
+                "postotak": round(izvedeno / q * 100, 1) if q else None,
+                "materijali": mats,
+                "n_mat": len(mats),
+            })
+
+        p = s.get(Projekt, projekt_key)
+        postotak = round(uk_izvedeno / uk_ugovoreno * 100, 1) if uk_ugovoreno else 0.0
+        return {
+            "stavke": out,
+            "uk_ugovoreno": round(uk_ugovoreno, 2),
+            "uk_izvedeno": round(uk_izvedeno, 2),
+            "postotak": postotak,
+            "naziv": p.naziv if p else projekt_key,
+            "key": projekt_key,
+        }
+
+
+def set_izvedeno_rucno(stavka_id: int, vrijednost: str) -> str | None:
+    """Postavi ručni override izvedene količine (prazno = NULL = auto).
+    Vrati projekt_key ili None ako stavka nije pronađena."""
+    with db.session() as s:
+        st = s.get(TroskovnikStavka, stavka_id)
+        if not st:
+            return None
+        st.izvedeno_rucno = (
+            _num(vrijednost) if (vrijednost or "").strip() else None
+        )
+        return st.projekt_key

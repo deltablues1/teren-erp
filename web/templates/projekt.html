@@ -60,6 +60,7 @@
 <div class="docs">
   {% if p.n_troskovnik %}
   <a class="btn" href="/projekt/{{ p.key }}/troskovnik">📋 Troškovnik ({{ p.n_troskovnik }} stavki)</a>
+  <a class="btn" href="/projekt/{{ p.key }}/obracun" style="background:#059669">📊 Obračun</a>
   {% endif %}
   <form method="get" action="/projekt/{{ p.key }}/dnevnik" target="_blank">
     <label class="muted" style="font-size:13px">Od</label>
