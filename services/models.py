@@ -72,6 +72,9 @@ class Radnik(Base):
     aktivan: Mapped[bool] = mapped_column(Boolean, default=True)
     pin_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
     push_subscription: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    default_vozilo_id: Mapped[int | None] = mapped_column(
+        ForeignKey("vozilo.id", ondelete="SET NULL"), nullable=True, default=None
+    )
 
 
 class ProjektRadnik(Base):

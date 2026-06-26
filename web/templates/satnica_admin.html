@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Satnica radnika{% endblock %}
+{% block content %}
+<h1>Satnica radnika</h1>
+
+<!-- Filter -->
+<form method="get" action="/satnica" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:20px;">
+  <div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Od</div>
+    <input type="date" name="od" value="{{ sat.od_iso }}"
+           style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;">
+  </div>
+  <div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Do</div>
+    <input type="date" name="do" value="{{ sat.do_iso }}"
+           style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;">
+  </div>
+  {% if projekti %}
+  <div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Projekt</div>
+    <select name="projekt_key"
+            style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;">
+      <option value="">— svi projekti —</option>
+      {% for p in projekti %}
+      <option value="{{ p.key }}" {% if p.key == filter_projekt %}selected{% endif %}>{{ p.naziv }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
+  <button type="submit"
+          style="padding:9px 18px;background:var(--brand);color:#fff;border:none;border-radius:8px;
+                 font-size:14px;cursor:pointer;">Prikaži</button>
+</form>
+
+<!-- Ukupno -->
+<div class="cards" style="margin-bottom:16px;">
+  <div class="card">
+    <div class="n">{{ sat.ukupno_sve }}</div>
+    <div class="l">Ukupno sati ({{ sat.od }} – {{ sat.do }})</div>
+  </div>
+  <div class="card">
+    <div class="n">{{ sat.radnici|length }}</div>
+    <div class="l">Radnika s unosima</div>
+  </div>
+</div>
+
+{% if sat.radnici %}
+
+<!-- Po radniku — accordion -->
+{% for r in sat.radnici %}
+<details style="background:var(--card);border:1px solid var(--line);border-radius:10px;
+                margin-bottom:10px;overflow:hidden;" {% if loop.first %}open{% endif %}>
+  <summary style="padding:14px 16px;cursor:pointer;display:flex;justify-content:space-between;
+                  align-items:center;list-style:none;font-weight:600;">
+    <span>{{ r.ime }}</span>
+    <span style="color:var(--brand);font-size:18px;font-weight:800;">{{ r.ukupno }} h</span>
+  </summary>
+  <div style="border-top:1px solid var(--line);">
+    <table>
+      <thead>
+        <tr>
+          <th>Datum</th>
+          <th>Projekt</th>
+          <th style="text-align:right;">Sati</th>
+          <th style="text-align:right;">Unosa</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in r.dani %}
+        <tr>
+          <td>{{ d.datum }}</td>
+          <td class="muted" style="font-size:12px;">{{ d.projekt_key }}</td>
+          <td style="text-align:right;font-weight:700;color:var(--brand);">{{ d.sati }}</td>
+          <td style="text-align:right;" class="muted">{{ d.n }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endfor %}
+
+{% else %}
+<div style="text-align:center;color:var(--muted);padding:40px;">
+  Nema upisanih sati za odabrani period.
+</div>
+{% endif %}
+
+{% endblock %}

@@ -900,10 +900,11 @@ def gen_knjiga(request: Request, key: str, situacija: int = 0):
 def radnici_prikaz(request: Request, poruka: str = ""):
     if not _authed(request):
         return _redirect_login()
-    radnici, svi_projekti = data.list_radnici_detalji()
+    radnici, svi_projekti, sva_vozila = data.list_radnici_detalji()
     return templates.TemplateResponse(request, "radnici.html", {
         "radnici": radnici,
         "svi_projekti": svi_projekti,
+        "sva_vozila": sva_vozila,
         "poruka": poruka,
         "aktivno": "radnici",
     })
@@ -954,6 +955,32 @@ def radnik_obrisi_pin(request: Request, telegram_id: int):
         return _redirect_login()
     data.postavi_pin(telegram_id, None)
     return _redir("/radnici", "PIN uklonjen.")
+
+
+@app.post("/radnik/{telegram_id}/vozilo")
+def radnik_postavi_vozilo(request: Request, telegram_id: int, vozilo_id: str = Form("")):
+    if not _authed(request):
+        return _redirect_login()
+    vid = int(vozilo_id) if vozilo_id.strip() and vozilo_id != "0" else None
+    data.postavi_default_vozilo(telegram_id, vid)
+    return _redir("/radnici", "Vozilo dodijeljeno radniku." if vid else "Vozilo uklonjenio s radnika.")
+
+
+@app.get("/satnica", response_class=HTMLResponse)
+def admin_satnica(request: Request, od: str = "", do: str = "", projekt_key: str = ""):
+    if not _authed(request):
+        return _redirect_login()
+    from datetime import date as _date
+    od_d = _date.fromisoformat(od) if od else None
+    do_d = _date.fromisoformat(do) if do else None
+    sat = data.get_satnica_admin(od_d, do_d, projekt_key or None)
+    projekti = data.list_projekti()
+    return templates.TemplateResponse(request, "satnica_admin.html", {
+        "sat": sat,
+        "projekti": projekti,
+        "filter_projekt": projekt_key,
+        "aktivno": "satnica",
+    })
 
 
 @app.post("/radnik/{telegram_id}/projekt-dodaj")

@@ -948,7 +948,12 @@ def get_radnik_by_pin(pin_hash: str) -> dict[str, Any] | None:
         )
         if not r:
             return None
-        return {"telegram_id": r.telegram_id, "ime": r.ime, "kvalifikacija": r.kvalifikacija}
+        return {
+            "telegram_id": r.telegram_id,
+            "ime": r.ime,
+            "kvalifikacija": r.kvalifikacija,
+            "default_vozilo_id": r.default_vozilo_id,
+        }
 
 
 def get_projekti_za_radnika(telegram_id: int) -> list[dict[str, Any]]:
@@ -1067,6 +1072,91 @@ def set_push_subscription(telegram_id: int, sub_json: str | None) -> None:
         r = s.get(Radnik, telegram_id)
         if r:
             r.push_subscription = sub_json
+
+
+def postavi_default_vozilo(telegram_id: int, vozilo_id: int | None) -> bool:
+    with db.session() as s:
+        r = s.get(Radnik, telegram_id)
+        if not r:
+            return False
+        r.default_vozilo_id = vozilo_id
+        return True
+
+
+# =============================================================================
+# Admin — satnica svih radnika
+# =============================================================================
+
+def get_satnica_admin(
+    od: date | None = None,
+    do: date | None = None,
+    projekt_key: str | None = None,
+) -> dict:
+    """Sati rada svih radnika u zadanom periodu, grupirani po radniku i po danu."""
+    if not od:
+        od = date.today() - timedelta(days=29)
+    if not do:
+        do = date.today()
+
+    with db.session() as s:
+        q = (
+            select(
+                DnevnikUnos.telegram_id,
+                DnevnikUnos.radnik,
+                DnevnikUnos.datum,
+                DnevnikUnos.projekt_key,
+                func.sum(DnevnikUnos.sati).label("sati"),
+                func.count(DnevnikUnos.id).label("n"),
+            )
+            .where(
+                DnevnikUnos.datum >= od,
+                DnevnikUnos.datum <= do,
+                DnevnikUnos.sati.isnot(None),
+            )
+            .group_by(
+                DnevnikUnos.telegram_id,
+                DnevnikUnos.radnik,
+                DnevnikUnos.datum,
+                DnevnikUnos.projekt_key,
+            )
+            .order_by(DnevnikUnos.datum.desc())
+        )
+        if projekt_key:
+            q = q.where(DnevnikUnos.projekt_key == projekt_key)
+        rows = s.execute(q).all()
+
+    # Grupiraj po radniku
+    po_radniku: dict[int, dict] = {}
+    for r in rows:
+        tid = r.telegram_id
+        if tid not in po_radniku:
+            po_radniku[tid] = {
+                "telegram_id": tid,
+                "ime": r.radnik or f"ID {tid}",
+                "ukupno": 0.0,
+                "dani": [],
+            }
+        sati = round(float(r.sati or 0), 2)
+        po_radniku[tid]["ukupno"] = round(po_radniku[tid]["ukupno"] + sati, 2)
+        po_radniku[tid]["dani"].append({
+            "datum": r.datum.strftime("%d.%m.%Y") if hasattr(r.datum, "strftime") else str(r.datum),
+            "datum_iso": r.datum.isoformat() if hasattr(r.datum, "isoformat") else str(r.datum),
+            "projekt_key": r.projekt_key or "",
+            "sati": sati,
+            "n": r.n,
+        })
+
+    radnici_lista = sorted(po_radniku.values(), key=lambda x: -x["ukupno"])
+    ukupno_sve = round(sum(r["ukupno"] for r in radnici_lista), 2)
+
+    return {
+        "od": od.strftime("%d.%m.%Y"),
+        "do": do.strftime("%d.%m.%Y"),
+        "od_iso": od.isoformat(),
+        "do_iso": do.isoformat(),
+        "radnici": radnici_lista,
+        "ukupno_sve": ukupno_sve,
+    }
 
 
 # =============================================================================
@@ -1314,6 +1404,10 @@ def list_radnici_detalji() -> list[dict[str, Any]]:
         svi_projekti = s.scalars(
             select(Projekt).where(Projekt.aktivan.is_(True)).order_by(Projekt.naziv)
         ).all()
+        vozila = s.scalars(
+            select(Vozilo).where(Vozilo.aktivno.is_(True)).order_by(Vozilo.naziv)
+        ).all()
+        vozila_map = {v.id: v.naziv for v in vozila}
         return [
             {
                 "telegram_id": r.telegram_id,
@@ -1321,6 +1415,10 @@ def list_radnici_detalji() -> list[dict[str, Any]]:
                 "kvalifikacija": r.kvalifikacija,
                 "ima_pin": bool(r.pin_hash),
                 "projekti": projekti_po_r.get(r.telegram_id, []),
+                "default_vozilo_id": r.default_vozilo_id,
+                "default_vozilo_naziv": vozila_map.get(r.default_vozilo_id, "") if r.default_vozilo_id else "",
             }
             for r in radnici
-        ], [{"key": p.key, "naziv": p.naziv} for p in svi_projekti]
+        ], [{"key": p.key, "naziv": p.naziv} for p in svi_projekti], [
+            {"id": v.id, "naziv": v.naziv, "registracija": v.registracija} for v in vozila
+        ]

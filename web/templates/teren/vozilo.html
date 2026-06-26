@@ -31,7 +31,8 @@
     <select name="vozilo_id" id="vozilo_sel" required onchange="onVozilo(this)">
       <option value="">— Odaberi vozilo —</option>
       {% for v in vozila %}
-      <option value="{{ v.id }}" data-km="{{ v.km_stanje }}">
+      <option value="{{ v.id }}" data-km="{{ v.km_stanje }}"
+              {% if v.id == default_vozilo_id %}selected{% endif %}>
         {{ v.naziv }} ({{ v.registracija }}) — {{ v.km_stanje|int }} km
       </option>
       {% endfor %}
@@ -139,6 +140,12 @@
 {% endif %}
 
 <script>
+// Predpopuni km start za default vozilo pri učitavanju
+document.addEventListener('DOMContentLoaded', function() {
+  const sel = document.getElementById('vozilo_sel');
+  if (sel && sel.value) onVozilo(sel);
+});
+
 function onVozilo(sel) {
   const opt = sel.options[sel.selectedIndex];
   const km = opt ? parseFloat(opt.dataset.km || 0) : 0;

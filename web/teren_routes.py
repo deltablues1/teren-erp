@@ -89,6 +89,7 @@ def login_post(request: Request, pin: str = Form("")):
         return _tmpl("login.html", request, {"greska": "Pogrešan PIN. Pokušaj ponovno."})
     request.session["teren_radnik_id"] = radnik["telegram_id"]
     request.session["teren_radnik_ime"] = radnik["ime"]
+    request.session["teren_default_vozilo_id"] = radnik.get("default_vozilo_id")
     request.session.pop("teren_projekt_key", None)
     request.session.pop("teren_draft", None)
     return RedirectResponse(url="/teren/odabir", status_code=303)
@@ -566,6 +567,7 @@ def vozilo_get(request: Request, poruka: str = ""):
     vozila = wd.list_vozila()
     projekti = wd.get_projekti_za_radnika(radnik_id)
     moji_nalozi = wd.list_putni_nalozi(radnik_id=radnik_id, limit=5)
+    default_vozilo_id = request.session.get("teren_default_vozilo_id")
     return _tmpl("vozilo.html", request, {
         "vozila": vozila,
         "projekti": projekti,
@@ -573,6 +575,7 @@ def vozilo_get(request: Request, poruka: str = ""):
         "poruka": poruka,
         "danas": date.today().isoformat(),
         "aktivan_projekt_key": projekt_key,
+        "default_vozilo_id": default_vozilo_id,
         "aktivno": "vozilo",
     })
 

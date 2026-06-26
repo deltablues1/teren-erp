@@ -29,6 +29,7 @@
       <th>Radnik</th>
       <th>Telegram ID</th>
       <th>Projekti</th>
+      <th>Vozilo</th>
       <th>PIN (web)</th>
       <th>Akcije</th>
     </tr>
@@ -78,6 +79,31 @@
             Dodaj
           </button>
         </form>
+      </td>
+
+      <!-- Vozilo -->
+      <td>
+        <form method="post" action="/radnik/{{ r.telegram_id }}/vozilo"
+              style="display:flex;gap:4px;align-items:center;">
+          <select name="vozilo_id"
+                  style="padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:12px;">
+            <option value="0">— bez vozila —</option>
+            {% for v in sva_vozila %}
+            <option value="{{ v.id }}"
+                    {% if r.default_vozilo_id == v.id %}selected{% endif %}>
+              {{ v.naziv }} ({{ v.registracija }})
+            </option>
+            {% endfor %}
+          </select>
+          <button type="submit"
+                  style="padding:4px 10px;background:var(--brand);color:#fff;
+                         border:none;border-radius:6px;font-size:12px;cursor:pointer;">
+            ✓
+          </button>
+        </form>
+        {% if r.default_vozilo_naziv %}
+        <div style="font-size:11px;color:var(--muted);margin-top:3px;">{{ r.default_vozilo_naziv }}</div>
+        {% endif %}
       </td>
 
       <!-- PIN -->
