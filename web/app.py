@@ -383,6 +383,12 @@ def zadatak_create(
             )
             if mid:
                 zadaci_srv.zabiljezi_poruku(z["id"], r["telegram_id"], mid)
+            # Web push notifikacija (PWA)
+            try:
+                from services.push_service import send_push
+                send_push(r["telegram_id"], f"Novi zadatak — {naziv}", tekst[:100])
+            except Exception:
+                pass
 
     return RedirectResponse(url=f"/projekt/{key}#zadaci", status_code=303)
 
@@ -966,3 +972,77 @@ def radnik_projekt_ukloni(request: Request, telegram_id: int, projekt_key: str):
         return _redirect_login()
     data.ukloni_projekt_radnika(telegram_id, projekt_key)
     return _redir("/radnici", "Radnik uklonjen s projekta.")
+
+
+# =============================================================================
+# Admin: Vozila + putni nalozi
+# =============================================================================
+
+@app.get("/vozila")
+def vozila_list(request: Request, poruka: str = ""):
+    if not _authed(request):
+        return _redirect_login()
+    vozila = data.list_sva_vozila_admin()
+    nalozi = data.list_putni_nalozi(limit=50)
+    return templates.TemplateResponse("vozila.html", {
+        "request": request,
+        "vozila": vozila,
+        "nalozi": nalozi,
+        "poruka": poruka,
+    })
+
+
+@app.post("/vozila/novo")
+def vozila_novo(
+    request: Request,
+    naziv: str = Form(""),
+    registracija: str = Form(""),
+    km_pocetni: str = Form("0"),
+):
+    if not _authed(request):
+        return _redirect_login()
+    if not naziv.strip() or not registracija.strip():
+        return _redir("/vozila", "Naziv i registracija su obavezni.")
+    try:
+        km = float(km_pocetni.replace(",", "."))
+    except ValueError:
+        km = 0.0
+    data.create_vozilo(naziv.strip(), registracija.strip(), km)
+    return _redir("/vozila", f"Vozilo '{naziv}' dodano.")
+
+
+@app.post("/vozila/{vozilo_id}/uredi")
+def vozila_uredi(
+    request: Request,
+    vozilo_id: int,
+    naziv: str = Form(""),
+    registracija: str = Form(""),
+    aktivno: str = Form(""),
+):
+    if not _authed(request):
+        return _redirect_login()
+    data.update_vozilo(
+        vozilo_id,
+        naziv=naziv.strip() or None,
+        registracija=registracija.strip() or None,
+        aktivno=(aktivno == "1") if aktivno else None,
+    )
+    return _redir("/vozila", "Vozilo ažurirano.")
+
+
+@app.get("/vozila/export")
+def vozila_export(request: Request, od: str = "", do: str = ""):
+    if not _authed(request):
+        return _redirect_login()
+    od_d = date.fromisoformat(od) if od else None
+    do_d = date.fromisoformat(do) if do else None
+    buf = data.export_putni_nalozi_excel(od_d, do_d)
+    if not buf:
+        return _redir("/vozila", "openpyxl nije instaliran (pip install openpyxl).")
+    from fastapi.responses import StreamingResponse
+    filename = f"putni_nalozi_{od or 'sve'}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

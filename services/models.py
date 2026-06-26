@@ -71,6 +71,7 @@ class Radnik(Base):
     kvalifikacija: Mapped[str] = mapped_column(String(255), default="")
     aktivan: Mapped[bool] = mapped_column(Boolean, default=True)
     pin_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
+    push_subscription: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
 
 
 class ProjektRadnik(Base):
@@ -405,6 +406,42 @@ class Cjenik(Base):
     valuta: Mapped[str] = mapped_column(String(10), default="EUR")
     datum: Mapped[date | None] = mapped_column(Date, nullable=True)
     aktivan: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+# =============================================================================
+# Modul: VOZILA + PUTNI NALOZI
+# =============================================================================
+
+class Vozilo(Base):
+    __tablename__ = "vozilo"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    naziv: Mapped[str] = mapped_column(String(100), default="")         # "VW Caddy"
+    registracija: Mapped[str] = mapped_column(String(20), default="")   # "ZG-1234-AB"
+    km_stanje: Mapped[float] = mapped_column(Float, default=0.0)        # ažurira se na km_kraj
+    aktivno: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class PutniNalog(Base):
+    __tablename__ = "putni_nalog"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    radnik_telegram_id: Mapped[int] = mapped_column(
+        ForeignKey("radnik.telegram_id", ondelete="CASCADE"), index=True
+    )
+    vozilo_id: Mapped[int] = mapped_column(
+        ForeignKey("vozilo.id", ondelete="RESTRICT"), index=True
+    )
+    datum: Mapped[date] = mapped_column(Date, default=date.today)
+    projekt_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    polaziste: Mapped[str] = mapped_column(String(200), default="")
+    odrediste: Mapped[str] = mapped_column(String(200), default="")
+    km_start: Mapped[float] = mapped_column(Float, default=0.0)
+    km_kraj: Mapped[float] = mapped_column(Float, default=0.0)
+    gorivo_l: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gorivo_eur: Mapped[float | None] = mapped_column(Float, nullable=True)
+    napomena: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 

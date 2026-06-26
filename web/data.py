@@ -5,6 +5,7 @@ Vraćaju obične dictove (odvojene od sesije) da ih Jinja lako prikaže.
 from __future__ import annotations
 
 import re
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
@@ -19,10 +20,12 @@ from services.models import (
     Partner,
     Projekt,
     ProjektRadnik,
+    PutniNalog,
     Radnik,
     Situacija,
     SituacijaStavka,
     TroskovnikStavka,
+    Vozilo,
 )
 
 
@@ -1057,6 +1060,240 @@ def ukloni_projekt_radnika(telegram_id: int, projekt_key: str) -> bool:
             return False
         s.delete(pr)
         return True
+
+
+def set_push_subscription(telegram_id: int, sub_json: str | None) -> None:
+    with db.session() as s:
+        r = s.get(Radnik, telegram_id)
+        if r:
+            r.push_subscription = sub_json
+
+
+# =============================================================================
+# Teren web — satnica
+# =============================================================================
+
+def get_satnica_radnika(telegram_id: int) -> dict[str, Any]:
+    """Sati rada radnika grupirani po datumu, zadnjih 60 dana."""
+    today = date.today()
+    # Ponedjeljak ovog tjedna
+    monday = today - timedelta(days=today.weekday())
+    month_start = today.replace(day=1)
+    cutoff = today - timedelta(days=60)
+
+    with db.session() as s:
+        rows = s.execute(
+            select(
+                DnevnikUnos.datum,
+                func.sum(DnevnikUnos.sati).label("sati"),
+                func.count(DnevnikUnos.id).label("n"),
+                func.max(DnevnikUnos.projekt_key).label("projekt_key"),
+            )
+            .where(
+                DnevnikUnos.telegram_id == telegram_id,
+                DnevnikUnos.datum >= cutoff,
+                DnevnikUnos.sati.isnot(None),
+            )
+            .group_by(DnevnikUnos.datum)
+            .order_by(DnevnikUnos.datum.desc())
+        ).all()
+
+    dani = [
+        {
+            "datum": r.datum.strftime("%d.%m.%Y") if hasattr(r.datum, "strftime") else str(r.datum),
+            "datum_iso": r.datum.isoformat() if hasattr(r.datum, "isoformat") else str(r.datum),
+            "sati": round(float(r.sati or 0), 2),
+            "n": r.n,
+            "projekt_key": r.projekt_key or "",
+        }
+        for r in rows
+    ]
+
+    def _sum(fn):
+        return round(sum(d["sati"] for d in dani if fn(d["datum_iso"])), 2)
+
+    danas = _sum(lambda d: d == today.isoformat())
+    tjedan = _sum(lambda d: d >= monday.isoformat())
+    mjesec = _sum(lambda d: d >= month_start.isoformat())
+
+    return {
+        "danas": danas,
+        "tjedan": tjedan,
+        "mjesec": mjesec,
+        "dani": dani,
+    }
+
+
+# =============================================================================
+# Teren web — vozila + putni nalozi
+# =============================================================================
+
+def list_vozila() -> list[dict[str, Any]]:
+    with db.session() as s:
+        rows = s.scalars(
+            select(Vozilo).where(Vozilo.aktivno.is_(True)).order_by(Vozilo.naziv)
+        ).all()
+        return [
+            {"id": v.id, "naziv": v.naziv, "registracija": v.registracija, "km_stanje": v.km_stanje}
+            for v in rows
+        ]
+
+
+def get_vozilo(vozilo_id: int) -> dict[str, Any] | None:
+    with db.session() as s:
+        v = s.get(Vozilo, vozilo_id)
+        if not v:
+            return None
+        return {"id": v.id, "naziv": v.naziv, "registracija": v.registracija,
+                "km_stanje": v.km_stanje, "aktivno": v.aktivno}
+
+
+def create_vozilo(naziv: str, registracija: str, km_pocetni: float = 0.0) -> dict[str, Any]:
+    with db.session() as s:
+        v = Vozilo(naziv=naziv.strip(), registracija=registracija.strip().upper(),
+                   km_stanje=km_pocetni)
+        s.add(v)
+        s.flush()
+        return {"id": v.id, "naziv": v.naziv, "registracija": v.registracija}
+
+
+def update_vozilo(vozilo_id: int, naziv: str | None = None,
+                  registracija: str | None = None, aktivno: bool | None = None) -> bool:
+    with db.session() as s:
+        v = s.get(Vozilo, vozilo_id)
+        if not v:
+            return False
+        if naziv is not None:
+            v.naziv = naziv.strip()
+        if registracija is not None:
+            v.registracija = registracija.strip().upper()
+        if aktivno is not None:
+            v.aktivno = aktivno
+        return True
+
+
+def save_putni_nalog(
+    radnik_id: int,
+    vozilo_id: int,
+    datum: date,
+    polaziste: str,
+    odrediste: str,
+    km_start: float,
+    km_kraj: float,
+    projekt_key: str | None = None,
+    gorivo_l: float | None = None,
+    gorivo_eur: float | None = None,
+    napomena: str | None = None,
+) -> int:
+    with db.session() as s:
+        n = PutniNalog(
+            radnik_telegram_id=radnik_id,
+            vozilo_id=vozilo_id,
+            datum=datum,
+            projekt_key=projekt_key,
+            polaziste=polaziste,
+            odrediste=odrediste,
+            km_start=km_start,
+            km_kraj=km_kraj,
+            gorivo_l=gorivo_l,
+            gorivo_eur=gorivo_eur,
+            napomena=napomena,
+        )
+        s.add(n)
+        # Ažuriraj km_stanje vozila
+        v = s.get(Vozilo, vozilo_id)
+        if v:
+            v.km_stanje = km_kraj
+        s.flush()
+        return n.id
+
+
+def list_putni_nalozi(
+    radnik_id: int | None = None,
+    vozilo_id: int | None = None,
+    od: date | None = None,
+    do: date | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    with db.session() as s:
+        q = (
+            select(PutniNalog, Vozilo.naziv, Vozilo.registracija, Radnik.ime)
+            .join(Vozilo, Vozilo.id == PutniNalog.vozilo_id)
+            .join(Radnik, Radnik.telegram_id == PutniNalog.radnik_telegram_id)
+            .order_by(PutniNalog.datum.desc(), PutniNalog.created_at.desc())
+        )
+        if radnik_id is not None:
+            q = q.where(PutniNalog.radnik_telegram_id == radnik_id)
+        if vozilo_id is not None:
+            q = q.where(PutniNalog.vozilo_id == vozilo_id)
+        if od:
+            q = q.where(PutniNalog.datum >= od)
+        if do:
+            q = q.where(PutniNalog.datum <= do)
+        q = q.limit(limit)
+        rows = s.execute(q).all()
+        return [
+            {
+                "id": n.id,
+                "datum": n.datum.strftime("%d.%m.%Y") if n.datum else "",
+                "datum_iso": n.datum.isoformat() if n.datum else "",
+                "radnik_telegram_id": n.radnik_telegram_id,
+                "radnik_ime": ime,
+                "vozilo_id": n.vozilo_id,
+                "vozilo_naziv": naziv,
+                "vozilo_reg": registracija,
+                "polaziste": n.polaziste,
+                "odrediste": n.odrediste,
+                "km_start": n.km_start,
+                "km_kraj": n.km_kraj,
+                "km_prijedeno": round(n.km_kraj - n.km_start, 1),
+                "gorivo_l": n.gorivo_l,
+                "gorivo_eur": n.gorivo_eur,
+                "projekt_key": n.projekt_key or "",
+                "napomena": n.napomena or "",
+            }
+            for n, naziv, registracija, ime in rows
+        ]
+
+
+def export_putni_nalozi_excel(od: date | None = None, do: date | None = None):
+    """Vrati BytesIO s Excel tablicom putnih naloga za računovodstvo."""
+    import io
+    try:
+        import openpyxl
+    except ImportError:
+        return None
+
+    nalozi = list_putni_nalozi(od=od, do=do, limit=5000)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Putni nalozi"
+    zaglavlje = ["Datum", "Radnik", "Vozilo", "Registracija",
+                 "Polazište", "Odredište", "Km start", "Km kraj",
+                 "Km prijeđeno", "Gorivo (L)", "Gorivo (EUR)", "Projekt", "Napomena"]
+    ws.append(zaglavlje)
+    for n in nalozi:
+        ws.append([
+            n["datum"], n["radnik_ime"], n["vozilo_naziv"], n["vozilo_reg"],
+            n["polaziste"], n["odrediste"], n["km_start"], n["km_kraj"],
+            n["km_prijedeno"], n["gorivo_l"], n["gorivo_eur"],
+            n["projekt_key"], n["napomena"],
+        ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def list_sva_vozila_admin() -> list[dict[str, Any]]:
+    """Sva vozila (uključujući neaktivna) za admin pregled."""
+    with db.session() as s:
+        rows = s.scalars(select(Vozilo).order_by(Vozilo.naziv)).all()
+        return [
+            {"id": v.id, "naziv": v.naziv, "registracija": v.registracija,
+             "km_stanje": v.km_stanje, "aktivno": v.aktivno}
+            for v in rows
+        ]
 
 
 def list_radnici_detalji() -> list[dict[str, Any]]:

@@ -1,0 +1,51 @@
+{% extends "teren/base.html" %}
+{% block title %}Satnica — Teren{% endblock %}
+{% block content %}
+
+<h2>Moja satnica</h2>
+
+<div class="kpi-grid">
+  <div class="kpi">
+    <div class="kpi-value">{{ sat.danas|round(1) }}</div>
+    <div class="kpi-label">Danas</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-value">{{ sat.tjedan|round(1) }}</div>
+    <div class="kpi-label">Ovaj tjedan</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-value">{{ sat.mjesec|round(1) }}</div>
+    <div class="kpi-label">Ovaj mjesec</div>
+  </div>
+</div>
+
+<h3>Zadnjih 60 dana</h3>
+
+{% if sat.dani %}
+<div class="card" style="padding: 0; overflow: hidden;">
+  <table>
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Sati</th>
+        <th>Unosa</th>
+        <th>Projekt</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in sat.dani %}
+      <tr>
+        <td>{{ d.datum }}</td>
+        <td class="bold">{{ d.sati }}</td>
+        <td class="muted">{{ d.n }}</td>
+        <td class="muted" style="font-size:12px;">{{ d.projekt_key }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="banner banner-warn">Nema upisanih sati u zadnjih 60 dana.</div>
+{% endif %}
+
+{% endblock %}

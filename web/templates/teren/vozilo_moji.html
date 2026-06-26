@@ -1,0 +1,42 @@
+{% extends "teren/base.html" %}
+{% block title %}Moji putni nalozi — Teren{% endblock %}
+{% block content %}
+
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+  <h2 style="margin:0;">Moji putni nalozi</h2>
+  <a href="/teren/vozilo" class="btn btn-sm btn-primary">+ Novi</a>
+</div>
+
+{% if nalozi %}
+<div class="card" style="padding:0; overflow:hidden;">
+  <table>
+    <thead>
+      <tr>
+        <th>Datum</th>
+        <th>Ruta</th>
+        <th>Vozilo</th>
+        <th style="text-align:right;">Km</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for n in nalozi %}
+      <tr>
+        <td style="white-space:nowrap;">{{ n.datum }}</td>
+        <td>
+          <div style="font-size:13px;">{{ n.polaziste }}</div>
+          <div style="font-size:13px; color:var(--muted);">→ {{ n.odrediste }}</div>
+          {% if n.gorivo_l %}<div class="muted" style="font-size:11px;">⛽ {{ n.gorivo_l }}L{% if n.gorivo_eur %} / {{ n.gorivo_eur }}€{% endif %}</div>{% endif %}
+          {% if n.projekt_key %}<div class="muted" style="font-size:11px;">📌 {{ n.projekt_key }}</div>{% endif %}
+        </td>
+        <td style="white-space:nowrap; font-size:12px;">{{ n.vozilo_reg }}</td>
+        <td style="text-align:right; font-weight:700; color:var(--brand); white-space:nowrap;">{{ n.km_prijedeno }} km</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="banner banner-warn">Nema putnih naloga.</div>
+{% endif %}
+
+{% endblock %}

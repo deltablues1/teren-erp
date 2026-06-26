@@ -1,0 +1,162 @@
+{% extends "teren/base.html" %}
+{% block title %}Vozilo — Teren{% endblock %}
+{% block head %}
+<style>
+  .vozilo-card {
+    border: 2px solid var(--line); border-radius: var(--radius);
+    padding: 14px 16px; margin-bottom: 10px; cursor: pointer;
+    transition: border-color .15s;
+  }
+  .vozilo-card.selected { border-color: var(--brand); background: #f0fdf4; }
+  .km-hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+</style>
+{% endblock %}
+{% block content %}
+
+{% if poruka %}
+<div class="banner banner-ok">{{ poruka }}</div>
+{% endif %}
+
+{% if not vozila %}
+<div class="banner banner-warn">Nema registriranih vozila. Kontaktiraj voditelja.</div>
+{% else %}
+
+<h2>Novi putni nalog</h2>
+
+<form method="post" action="/teren/vozilo/nalog" id="nalog-form">
+
+  <!-- Odabir vozila -->
+  <div class="form-group">
+    <label>Vozilo</label>
+    <select name="vozilo_id" id="vozilo_sel" required onchange="onVozilo(this)">
+      <option value="">— Odaberi vozilo —</option>
+      {% for v in vozila %}
+      <option value="{{ v.id }}" data-km="{{ v.km_stanje }}">
+        {{ v.naziv }} ({{ v.registracija }}) — {{ v.km_stanje|int }} km
+      </option>
+      {% endfor %}
+    </select>
+    <div class="km-hint" id="km-hint"></div>
+  </div>
+
+  <!-- Datum -->
+  <div class="form-group">
+    <label>Datum vožnje</label>
+    <input type="date" name="datum" value="{{ danas }}" required>
+  </div>
+
+  <!-- Polazište / Odredište -->
+  <div class="form-group">
+    <label>Polazište</label>
+    <input type="text" name="polaziste" placeholder="npr. Sjedište firme, Zagreb" required>
+  </div>
+  <div class="form-group">
+    <label>Odredište</label>
+    <input type="text" name="odrediste" placeholder="npr. Gradilište Novak, Rijeka" required>
+  </div>
+
+  <!-- Km -->
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+    <div class="form-group">
+      <label>Km — početak</label>
+      <input type="number" name="km_start" id="km_start" step="0.1" min="0"
+             placeholder="npr. 12450" required inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label>Km — kraj</label>
+      <input type="number" name="km_kraj" id="km_kraj" step="0.1" min="0"
+             placeholder="npr. 12680" required inputmode="decimal"
+             oninput="calcKm()">
+    </div>
+  </div>
+  <div id="km-info" class="muted" style="margin-top:-8px; margin-bottom:12px;"></div>
+
+  <!-- Gorivo (opcionalno) -->
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+    <div class="form-group">
+      <label>Gorivo (L) <span class="muted">— opcionalno</span></label>
+      <input type="number" name="gorivo_l" step="0.01" min="0"
+             placeholder="npr. 45.5" inputmode="decimal">
+    </div>
+    <div class="form-group">
+      <label>Gorivo (EUR) <span class="muted">— opcionalno</span></label>
+      <input type="number" name="gorivo_eur" step="0.01" min="0"
+             placeholder="npr. 72.80" inputmode="decimal">
+    </div>
+  </div>
+
+  <!-- Projekt (opcionalno) -->
+  {% if projekti %}
+  <div class="form-group">
+    <label>Projekt <span class="muted">— opcionalno</span></label>
+    <select name="projekt_key">
+      <option value="">— Nije vezano uz projekt —</option>
+      {% for p in projekti %}
+      <option value="{{ p.key }}" {% if p.key == aktivan_projekt_key %}selected{% endif %}>
+        {{ p.naziv }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
+
+  <!-- Napomena -->
+  <div class="form-group">
+    <label>Napomena <span class="muted">— opcionalno</span></label>
+    <textarea name="napomena" rows="2" placeholder="npr. Dostava materijala, dogovor s naručiteljem..."></textarea>
+  </div>
+
+  <button type="submit" class="btn btn-primary">Spremi putni nalog</button>
+</form>
+
+{% endif %}
+
+<!-- Zadnji nalozi -->
+{% if moji_nalozi %}
+<div class="sep"></div>
+<h3>Zadnji nalozi</h3>
+{% for n in moji_nalozi %}
+<div class="card" style="padding:12px 14px;">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+    <div>
+      <div class="bold" style="font-size:14px;">{{ n.polaziste }} → {{ n.odrediste }}</div>
+      <div class="muted">{{ n.datum }} · {{ n.vozilo_naziv }} ({{ n.vozilo_reg }})</div>
+    </div>
+    <div class="bold" style="font-size:16px; color:var(--brand); white-space:nowrap; margin-left:8px;">
+      {{ n.km_prijedeno }} km
+    </div>
+  </div>
+  {% if n.gorivo_l %}
+  <div class="muted" style="margin-top:4px; font-size:12px;">
+    ⛽ {{ n.gorivo_l }} L {% if n.gorivo_eur %}· {{ n.gorivo_eur }} EUR{% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+<div class="mt8">
+  <a href="/teren/vozilo/moji" class="btn btn-ghost btn-sm">Svi moji nalozi</a>
+</div>
+{% endif %}
+
+<script>
+function onVozilo(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  const km = opt ? parseFloat(opt.dataset.km || 0) : 0;
+  document.getElementById('km_start').value = km || '';
+  document.getElementById('km-hint').textContent = km ? `Zadnje stanje: ${Math.round(km).toLocaleString('hr')} km` : '';
+  calcKm();
+}
+function calcKm() {
+  const s = parseFloat(document.getElementById('km_start').value || 0);
+  const k = parseFloat(document.getElementById('km_kraj').value || 0);
+  const el = document.getElementById('km-info');
+  if (k > s) {
+    el.textContent = `Prijeđeno: ${Math.round((k - s) * 10) / 10} km`;
+  } else if (k && k <= s) {
+    el.textContent = '⚠️ Km kraj mora biti veći od km start';
+  } else {
+    el.textContent = '';
+  }
+}
+</script>
+{% endblock %}

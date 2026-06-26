@@ -7,6 +7,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0f766e">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  {% if vapid_public_key %}
+  <meta name="vapid-public-key" content="{{ vapid_public_key }}">
+  {% endif %}
   <title>{% block title %}Teren{% endblock %}</title>
   <style>
     :root {
@@ -40,22 +45,37 @@
     .topbar .odjava { font-size: 13px; color: rgba(255,255,255,.8);
       text-decoration: none; padding: 6px 4px; }
 
-    /* Donja navigacija */
+    /* Donja navigacija — horizontalno skrolabilna za 7 stavki */
     .bottomnav {
       position: fixed; bottom: 0; left: 0; right: 0;
       background: var(--card); border-top: 1px solid var(--line);
-      display: flex; justify-content: space-around; align-items: center;
+      display: flex; overflow-x: auto; -webkit-overflow-scrolling: touch;
+      scrollbar-width: none; align-items: stretch;
       height: 60px; padding-bottom: env(safe-area-inset-bottom, 0);
       z-index: 100;
     }
+    .bottomnav::-webkit-scrollbar { display: none; }
     .bottomnav a {
-      flex: 1; display: flex; flex-direction: column; align-items: center;
+      min-width: 68px; flex-shrink: 0;
+      display: flex; flex-direction: column; align-items: center;
       justify-content: center; text-decoration: none; color: var(--muted);
-      font-size: 11px; gap: 2px; padding: 6px 0;
+      font-size: 10px; gap: 2px; padding: 6px 4px;
     }
     .bottomnav a.active { color: var(--brand); }
     .bottomnav a svg { width: 22px; height: 22px; stroke: currentColor; fill: none;
       stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* Offline banner */
+    #offline-banner {
+      display: none; align-items: center; justify-content: space-between;
+      background: #fffbeb; border-bottom: 1px solid #fde68a;
+      padding: 8px 16px; font-size: 13px; color: #92400e;
+      position: sticky; top: 56px; z-index: 99;
+    }
+    #offline-banner button {
+      background: var(--warn); color: #fff; border: none;
+      padding: 4px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;
+    }
 
     /* Glavni sadržaj */
     main { flex: 1; padding: 16px; padding-bottom: 76px; max-width: 600px;
@@ -89,13 +109,17 @@
     .card-sub { color: var(--muted); font-size: 13px; }
 
     /* Forma */
-    textarea, input[type=text], input[type=password], input[type=number] {
+    textarea, input[type=text], input[type=password], input[type=number],
+    input[type=date], select {
       width: 100%; border: 2px solid var(--line); border-radius: 10px;
       padding: 14px; font-size: 16px; font-family: inherit;
       background: var(--card); color: var(--ink); outline: none;
       transition: border-color .15s; -webkit-appearance: none;
     }
-    textarea:focus, input:focus { border-color: var(--brand); }
+    textarea:focus, input:focus, select:focus { border-color: var(--brand); }
+    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;
+            color: var(--muted); }
+    .form-group { margin-bottom: 14px; }
 
     /* Baneri */
     .banner {
@@ -115,6 +139,13 @@
     .badge-ok   { background: #dcfce7; color: #166534; }
     .badge-warn { background: #fffbeb; color: #92400e; }
     .badge-err  { background: #fef2f2; color: #991b1b; }
+
+    /* KPI kartice (satnica) */
+    .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+    .kpi { background: var(--brand); color: #fff; border-radius: var(--radius);
+           padding: 14px 10px; text-align: center; }
+    .kpi-value { font-size: 28px; font-weight: 800; line-height: 1; }
+    .kpi-label { font-size: 11px; opacity: .85; margin-top: 4px; }
 
     /* Razdjelnik */
     .sep { height: 1px; background: var(--line); margin: 16px 0; }
@@ -136,6 +167,10 @@
     .mt16 { margin-top: 16px; }
     h2 { font-size: 18px; margin-bottom: 12px; }
     h3 { font-size: 15px; margin-bottom: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; padding: 8px 6px; font-size: 12px;
+         color: var(--muted); border-bottom: 1px solid var(--line); }
+    td { padding: 10px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
   </style>
   {% block head %}{% endblock %}
 </head>
@@ -149,6 +184,12 @@
       <a class="odjava" href="/teren/odjava">Odjava</a>
     {% endif %}
   </header>
+
+  <!-- Offline banner — prikazuje se kad ima pending unosa -->
+  <div id="offline-banner">
+    <span>📥 <strong id="offline-count">0</strong> unos(a) čeka sinkronizaciju</span>
+    <button onclick="TerenOffline.sync()">Sinkroniziraj</button>
+  </div>
 
   <main>
     {% block content %}{% endblock %}
@@ -168,6 +209,14 @@
       <svg viewBox="0 0 24 24"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
       Materijal
     </a>
+    <a href="/teren/satnica" class="{% if aktivno=='satnica' %}active{% endif %}">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Satnica
+    </a>
+    <a href="/teren/vozilo" class="{% if aktivno=='vozilo' %}active{% endif %}">
+      <svg viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 5v3h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+      Vozilo
+    </a>
     <a href="/teren/troskovnik" class="{% if aktivno=='troskovnik' %}active{% endif %}">
       <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
       Troškovnik
@@ -178,5 +227,8 @@
     </a>
   </nav>
   {% endif %}
+
+  <script src="/static/offline_queue.js"></script>
+  <script src="/static/push_register.js" defer></script>
 </body>
 </html>
