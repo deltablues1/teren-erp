@@ -1,0 +1,51 @@
+{% extends "teren/base.html" %}
+{% block title %}Zadaci{% endblock %}
+{% set aktivno = 'zadaci' %}
+
+{% block content %}
+<h2>Zadaci</h2>
+
+{% if not projekt_key %}
+  <div class="banner banner-warn">Odaberite projekt da vidite zadatke.</div>
+{% elif not zadaci %}
+  <div class="card center" style="padding:32px 16px;">
+    <div style="font-size:40px;margin-bottom:8px;">✅</div>
+    <div class="bold">Nema otvorenih zadataka</div>
+    <div class="muted mt8">Svi zadaci su završeni ili vam voditelj nije dodijelio nove.</div>
+  </div>
+{% else %}
+  <p class="muted" style="margin-bottom:12px;">{{ zadaci|length }} otvoreni zadatak{{ 'a' if zadaci|length != 1 else '' }}</p>
+
+  {% for z in zadaci %}
+  <div class="card">
+    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-bottom:10px;">
+      <div style="flex:1;">
+        <div class="card-title" style="font-size:15px; line-height:1.4;">{{ z.tekst }}</div>
+        <div class="card-sub mt8">
+          {% if z.telegram_id %}
+            <span style="background:#e0e7ff;color:#3730a3;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600;">Meni</span>
+          {% else %}
+            <span style="background:#f3f4f6;color:var(--muted);padding:2px 7px;border-radius:10px;font-size:11px;">Svima</span>
+          {% endif %}
+          {% if z.rok %}
+            <span style="margin-left:6px;">Rok: <strong>{{ z.rok }}</strong></span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <form method="post" action="/teren/zadaci/{{ z.id }}/dovrsi" style="flex:1;">
+        <button type="submit" class="btn btn-ok" style="padding:11px 14px;font-size:14px;">
+          ✅ Gotovo
+        </button>
+      </form>
+      <form method="post" action="/teren/zadaci/{{ z.id }}/odgodi" style="flex:1;">
+        <button type="submit" class="btn btn-ghost" style="padding:11px 14px;font-size:14px;">
+          ⏰ Odgodi
+        </button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+{% endif %}
+{% endblock %}

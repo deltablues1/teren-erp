@@ -1,0 +1,191 @@
+{% extends "teren/base.html" %}
+{% block title %}Unos{% endblock %}
+{% set aktivno = 'unos' %}
+
+{% block head %}
+<style>
+  #parsiranoDiv { display:none; }
+  #unosDiv {}
+  .mat-row { background:#f9fafb; border-radius:8px; padding:10px 12px; margin-bottom:8px; font-size:14px; }
+  .mat-opis { font-weight:600; }
+  .mat-kol  { color:var(--muted); font-size:13px; }
+  .konfidencija-low { color:var(--err); font-weight:600; }
+  .konfidencija-medium { color:var(--warn); font-weight:600; }
+  .file-label {
+    display:flex; align-items:center; gap:8px; padding:12px 14px;
+    border:2px dashed var(--line); border-radius:10px; cursor:pointer;
+    color:var(--muted); font-size:14px; margin-top:10px;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .file-label:active { background:#f3f4f6; }
+  .file-label svg { width:20px; height:20px; stroke:currentColor; fill:none; stroke-width:2;
+    stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+  #file-chosen { font-size:13px; color:var(--brand); margin-top:4px; min-height:18px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% if uspjeh %}
+<div class="banner banner-ok" style="display:flex;align-items:center;gap:8px;">
+  <span style="font-size:20px;">✅</span>
+  <div><strong>Zapisano!</strong> Izvještaj je uspješno pohranjen.</div>
+</div>
+{% endif %}
+
+{% if greska_spremi %}
+<div class="banner banner-err">Greška pri pohrani: {{ greska_spremi }}</div>
+{% endif %}
+
+<!-- ─── Forma za unos ─── -->
+<div id="unosDiv">
+  <h2>Izvještaj s terena</h2>
+
+  <form id="unosForm" enctype="multipart/form-data">
+    <textarea
+      name="tekst" id="tekst" rows="5"
+      placeholder="Opišite što ste radili danas...&#10;&#10;Npr: Sa Markom sam radio SK 9.1, postavio 30m kabela NYM 3x2.5, montirao 4 utičnice. Radio 8h, od 7-15."
+      style="resize:vertical; margin-bottom:10px;"
+    >{{ prefill }}</textarea>
+
+    <!-- Upload: slika ili audio -->
+    <label class="file-label" for="datoteka">
+      <svg viewBox="0 0 24 24"><path d="M15 8h.01M3 9a2 2 0 012-2h14a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path d="M3 9l4-4h10l4 4"/></svg>
+      Dodaj sliku ili audio
+    </label>
+    <input type="file" id="datoteka" name="datoteka"
+           accept="image/*,audio/*,video/*" style="display:none"
+           onchange="fileChosen(this)">
+    <div id="file-chosen"></div>
+
+    <div class="mt16">
+      <button type="button" class="btn btn-primary" id="parsirajBtn" onclick="parsiraj()">
+        <span id="parsirajTxt">Pošalji izvještaj</span>
+        <span id="parsirajSpinner" style="display:none"><span class="spinner" style="width:20px;height:20px;"></span></span>
+      </button>
+    </div>
+  </form>
+
+  <div id="greska" class="banner banner-err mt8" style="display:none;"></div>
+</div>
+
+<!-- ─── Potvrda parsiranog izvještaja ─── -->
+<div id="parsiranoDiv">
+  <h2>Provjeri i potvrdi</h2>
+  <div class="card" id="parsiranaKartica"></div>
+
+  <div id="low-conf-warn" class="banner banner-warn mt8" style="display:none;"></div>
+
+  <div class="btn-row mt16">
+    <form method="post" action="/teren/unos/spremi">
+      <button type="submit" class="btn btn-ok">✅ Potvrdi</button>
+    </form>
+    <button type="button" class="btn btn-warn" onclick="ispravi()">✏️ Ispravi</button>
+    <form method="post" action="/teren/unos/odbaci">
+      <button type="submit" class="btn btn-err">❌ Odbaci</button>
+    </form>
+  </div>
+  <p class="muted center mt8" style="font-size:12px;">Potvrdi = zapisuje u bazu. Ispravi = vrati na unos. Odbaci = briše draft.</p>
+</div>
+
+<script>
+function fileChosen(inp) {
+  const el = document.getElementById('file-chosen');
+  el.textContent = inp.files[0] ? inp.files[0].name : '';
+}
+
+function _rw(label, val) {
+  if (!val && val !== 0) return '';
+  return `<div style="margin-bottom:6px;"><span style="color:var(--muted);font-size:13px;">${label}:</span> <strong>${val}</strong></div>`;
+}
+
+function renderParsirano(p) {
+  let html = '';
+  html += _rw('Rad', p.opis_rada);
+  html += _rw('Lokacija', p.lokacija);
+  html += _rw('Strujni krug', p.strujni_krug);
+  if (p.datum_rada) html += _rw('Datum', p.datum_rada);
+  if (p.vrijeme_rada || p.sati != null) {
+    const t = [p.vrijeme_rada, p.sati != null ? p.sati + 'h' : ''].filter(Boolean).join(' · ');
+    html += _rw('Sati', t);
+  }
+  if (p.radnici_spomenuti && p.radnici_spomenuti.length) {
+    html += _rw('S njim radili', p.radnici_spomenuti.join(', '));
+  }
+  if (p.materijali && p.materijali.length) {
+    html += `<div style="margin-top:10px;margin-bottom:4px;font-size:13px;color:var(--muted);">Materijali:</div>`;
+    p.materijali.forEach(m => {
+      html += `<div class="mat-row">
+        <div class="mat-opis">${m.opis}</div>
+        <div class="mat-kol">${m.kolicina} ${m.jm}${m.strujni_krug ? ' · SK ' + m.strujni_krug : ''}</div>
+      </div>`;
+    });
+  }
+  if (p.problemi && p.problemi.length) {
+    html += `<div style="margin-top:10px;font-size:13px;color:var(--err);">⚠️ Problemi: ${p.problemi.join('; ')}</div>`;
+  }
+  if (p.potreban_materijal && p.potreban_materijal.length) {
+    html += `<div style="margin-top:6px;font-size:13px;color:var(--warn);">🚚 Potreban materijal: ${p.potreban_materijal.join('; ')}</div>`;
+  }
+  document.getElementById('parsiranaKartica').innerHTML = html || '<em class="muted">Ništa nije prepoznato.</em>';
+
+  const lowWarn = document.getElementById('low-conf-warn');
+  if (p.confidence === 'low' && p.pojasnjenje_potrebno) {
+    lowWarn.style.display = 'block';
+    lowWarn.textContent = '⚠️ ' + p.pojasnjenje_potrebno;
+  } else {
+    lowWarn.style.display = 'none';
+  }
+}
+
+async function parsiraj() {
+  const btn = document.getElementById('parsirajBtn');
+  const txt = document.getElementById('parsirajTxt');
+  const spn = document.getElementById('parsirajSpinner');
+  const err = document.getElementById('greska');
+
+  txt.style.display = 'none';
+  spn.style.display = '';
+  btn.disabled = true;
+  err.style.display = 'none';
+
+  const form = document.getElementById('unosForm');
+  const fd = new FormData(form);
+
+  try {
+    const r = await fetch('/teren/unos/parsiraj', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (data.greska) {
+      err.textContent = data.greska;
+      err.style.display = 'block';
+    } else {
+      renderParsirano(data.parsed);
+      document.getElementById('unosDiv').style.display = 'none';
+      document.getElementById('parsiranoDiv').style.display = 'block';
+    }
+  } catch(e) {
+    err.textContent = 'Greška veze. Pokušajte ponovno.';
+    err.style.display = 'block';
+  } finally {
+    txt.style.display = '';
+    spn.style.display = 'none';
+    btn.disabled = false;
+  }
+}
+
+function ispravi() {
+  document.getElementById('parsiranoDiv').style.display = 'none';
+  document.getElementById('unosDiv').style.display = 'block';
+}
+
+{% if draft and draft.parsed %}
+// Ima nespremljeni draft — odmah prikaži potvrdu
+window.addEventListener('DOMContentLoaded', function() {
+  const p = {{ draft.parsed | tojson }};
+  renderParsirano(p);
+  document.getElementById('unosDiv').style.display = 'none';
+  document.getElementById('parsiranoDiv').style.display = 'block';
+});
+{% endif %}
+</script>
+{% endblock %}

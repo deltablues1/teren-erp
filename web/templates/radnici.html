@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Radnici — PIN{% endblock %}
+
+{% block content %}
+<h1>Radnici — upravljanje PIN-ovima</h1>
+<p style="color:var(--muted);margin-bottom:16px;">
+  Svaki radnik koji koristi web sučelje (<code>/teren</code>) mora imati
+  postavljen PIN (4–6 znamenki). Voditelj postavlja PINove ovdje i dijeli
+  ih radnicima izvan sustava (npr. papirić, SMS).
+</p>
+
+{% if poruka %}
+<div class="banner {% if 'Greška' in poruka %}err{% endif %}">{{ poruka }}</div>
+{% endif %}
+
+<table>
+  <thead>
+    <tr>
+      <th>Radnik</th>
+      <th>Telegram ID</th>
+      <th>Kvalifikacija</th>
+      <th>PIN</th>
+      <th>Akcija</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in radnici %}
+    <tr>
+      <td><strong>{{ r.ime }}</strong></td>
+      <td class="muted">{{ r.telegram_id }}</td>
+      <td class="muted">{{ r.kvalifikacija or '—' }}</td>
+      <td>
+        {% if r.ima_pin %}
+          <span class="tag kur">✅ Postavljen</span>
+        {% else %}
+          <span class="tag" style="background:#fef2f2;color:#991b1b;">Nema PIN-a</span>
+        {% endif %}
+      </td>
+      <td>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <form method="post" action="/radnik/{{ r.telegram_id }}/pin"
+                style="display:flex;gap:6px;align-items:center;">
+            <input type="password" name="pin" placeholder="novi PIN"
+                   inputmode="numeric" pattern="[0-9]*" maxlength="6"
+                   style="width:110px;padding:6px 8px;border:1px solid var(--line);
+                          border-radius:6px;font-size:13px;">
+            <button type="submit"
+                    style="padding:6px 12px;background:var(--brand);color:#fff;
+                           border:none;border-radius:6px;font-size:13px;cursor:pointer;">
+              Postavi
+            </button>
+          </form>
+          {% if r.ima_pin %}
+          <form method="post" action="/radnik/{{ r.telegram_id }}/pin-obrisi"
+                onsubmit="return confirm('Ukloniti PIN za {{ r.ime }}?')">
+            <button type="submit"
+                    style="padding:6px 12px;background:#f3f4f6;color:var(--muted);
+                           border:1px solid var(--line);border-radius:6px;
+                           font-size:13px;cursor:pointer;">
+              Ukloni
+            </button>
+          </form>
+          {% endif %}
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+    {% if not radnici %}
+    <tr><td colspan="5" class="empty">Nema radnika u bazi.</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+
+<div style="margin-top:20px;">
+  <a href="/" class="back">← Natrag na pregled</a>
+</div>
+{% endblock %}

@@ -70,6 +70,7 @@ class Radnik(Base):
     ime: Mapped[str] = mapped_column(String(255), default="")
     kvalifikacija: Mapped[str] = mapped_column(String(255), default="")
     aktivan: Mapped[bool] = mapped_column(Boolean, default=True)
+    pin_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
 
 
 class ProjektRadnik(Base):

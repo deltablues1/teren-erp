@@ -1,0 +1,34 @@
+{% extends "teren/base.html" %}
+{% block title %}Odabir projekta{% endblock %}
+
+{% block content %}
+<h2>Odaberi projekt</h2>
+<p class="muted" style="margin-bottom:16px;">Na kojemu gradilištu danas radite?</p>
+
+{% if not projekti %}
+  <div class="banner banner-warn">
+    Niste dodijeljeni niti jednom projektu. Obratite se voditelju.
+  </div>
+{% else %}
+  {% for p in projekti %}
+  <form method="post" action="/teren/odabir/{{ p.key }}">
+    <button type="submit" style="
+      display:block; width:100%; text-align:left; padding:16px;
+      background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+      margin-bottom:12px; cursor:pointer; box-shadow:var(--shadow);
+      -webkit-tap-highlight-color:transparent;
+    ">
+      <div style="font-weight:700; font-size:16px; color:var(--ink); margin-bottom:4px;">
+        {{ p.naziv }}
+      </div>
+      {% if p.adresa %}
+      <div style="font-size:13px; color:var(--muted);">{{ p.adresa }}</div>
+      {% endif %}
+      <div style="margin-top:8px; font-size:13px; color:var(--brand); font-weight:600;">
+        Odaberi →
+      </div>
+    </button>
+  </form>
+  {% endfor %}
+{% endif %}
+{% endblock %}

@@ -34,6 +34,7 @@ from services import (
     telegram_push, troskovnik_import, zadaci as zadaci_srv,
 )
 from web import asistent, data, jobs
+from web.teren_routes import router as teren_router
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +47,8 @@ app.add_middleware(SessionMiddleware, secret_key=WEB_SECRET)
 _static = BASE_DIR / "static"
 _static.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(_static)), name="static")
+
+app.include_router(teren_router)
 
 
 def _authed(request: Request) -> bool:
@@ -883,3 +886,41 @@ def gen_knjiga(request: Request, key: str, situacija: int = 0):
         str(path), filename=path.name,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
+
+
+# ── Admin: PIN management za terenske radnike ─────────────────────────────────
+
+@app.get("/radnici", response_class=HTMLResponse)
+def radnici_prikaz(request: Request, poruka: str = ""):
+    if not _authed(request):
+        return _redirect_login()
+    return templates.TemplateResponse(request, "radnici.html", {
+        "radnici": data.list_radnici_za_pin(),
+        "poruka": poruka,
+        "aktivno": "radnici",
+    })
+
+
+@app.post("/radnik/{telegram_id}/pin")
+def radnik_postavi_pin(request: Request, telegram_id: int, pin: str = Form("")):
+    if not _authed(request):
+        return _redirect_login()
+    import hashlib
+    pin = pin.strip()
+    if not pin:
+        return _redir("/radnici", "PIN ne smije biti prazan.")
+    if not pin.isdigit() or len(pin) < 4:
+        return _redir("/radnici", "PIN mora biti broj od najmanje 4 znamenke.")
+    pin_hash = hashlib.sha256(pin.encode()).hexdigest()
+    ok = data.postavi_pin(telegram_id, pin_hash)
+    if not ok:
+        return _redir("/radnici", f"Radnik {telegram_id} nije pronađen.")
+    return _redir("/radnici", "PIN uspješno postavljen.")
+
+
+@app.post("/radnik/{telegram_id}/pin-obrisi")
+def radnik_obrisi_pin(request: Request, telegram_id: int):
+    if not _authed(request):
+        return _redirect_login()
+    data.postavi_pin(telegram_id, None)
+    return _redir("/radnici", "PIN uklonjen.")

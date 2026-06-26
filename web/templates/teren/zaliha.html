@@ -1,0 +1,36 @@
+{% extends "teren/base.html" %}
+{% block title %}Zaliha{% endblock %}
+{% set aktivno = 'zaliha' %}
+
+{% block content %}
+<h2>Moja zaliha</h2>
+<p class="muted" style="margin-bottom:16px;">Materijal trenutno zaduženem na vas (iz skladišta).</p>
+
+{% if not zaliha %}
+  <div class="card center" style="padding:32px 16px;">
+    <div style="font-size:40px;margin-bottom:8px;">📦</div>
+    <div class="bold">Nema zaduženog materijala</div>
+    <div class="muted mt8">Voditelj vam još nije zadužio materijal sa skladišta.</div>
+  </div>
+{% else %}
+  <p class="muted" style="margin-bottom:10px;">{{ zaliha|length }} vrsta materijala</p>
+  {% for z in zaliha %}
+  <div class="card" style="padding:12px 14px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div style="flex:1;">
+        <div class="card-title" style="font-size:14px;">{{ z.opis }}</div>
+        {% if z.jm %}<div class="card-sub">{{ z.jm }}</div>{% endif %}
+      </div>
+      <div style="font-size:22px;font-weight:700;color:var(--brand);text-align:right;">
+        {{ z.kolicina }}<span style="font-size:13px;font-weight:400;color:var(--muted);margin-left:3px;">{{ z.jm }}</span>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="sep"></div>
+  <p class="muted" style="font-size:12px;text-align:center;">
+    Ove količine vidljive su i voditelju u skladišnom modulu.
+  </p>
+{% endif %}
+{% endblock %}

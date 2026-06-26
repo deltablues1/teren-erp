@@ -18,6 +18,8 @@ from services.models import (
     Materijal,
     Partner,
     Projekt,
+    ProjektRadnik,
+    Radnik,
     Situacija,
     SituacijaStavka,
     TroskovnikStavka,
@@ -926,3 +928,71 @@ def set_izvedeno_rucno(stavka_id: int, vrijednost: str) -> str | None:
             _num(vrijednost) if (vrijednost or "").strip() else None
         )
         return st.projekt_key
+
+
+# =============================================================================
+# Teren web — radnici
+# =============================================================================
+
+def get_radnik_by_pin(pin_hash: str) -> dict[str, Any] | None:
+    """Pronađi aktivnog radnika po SHA256 hashu PIN-a. None ako ne postoji."""
+    with db.session() as s:
+        r = s.scalar(
+            select(Radnik).where(
+                Radnik.pin_hash == pin_hash,
+                Radnik.aktivan.is_(True),
+            )
+        )
+        if not r:
+            return None
+        return {"telegram_id": r.telegram_id, "ime": r.ime, "kvalifikacija": r.kvalifikacija}
+
+
+def get_projekti_za_radnika(telegram_id: int) -> list[dict[str, Any]]:
+    """Projekti na kojima je radnik dodijeljen (aktivni)."""
+    with db.session() as s:
+        rows = s.execute(
+            select(Projekt)
+            .join(ProjektRadnik, ProjektRadnik.projekt_key == Projekt.key)
+            .where(
+                ProjektRadnik.telegram_id == telegram_id,
+                Projekt.aktivan.is_(True),
+            )
+            .order_by(Projekt.naziv)
+        ).scalars().all()
+        return [{"key": p.key, "naziv": p.naziv, "adresa": p.adresa} for p in rows]
+
+
+def get_zaliha_radnika(telegram_id: int) -> list[dict[str, Any]]:
+    """Trenutno stanje materijala zaduženih na ovog radnika (iz skladišta)."""
+    from services import skladiste as skl
+    if not skl.ENABLED:
+        return []
+    return skl.stanje("radnik", str(telegram_id))
+
+
+def list_radnici_za_pin() -> list[dict[str, Any]]:
+    """Svi aktivni radnici za prikaz u admin PIN managementu."""
+    with db.session() as s:
+        rows = s.scalars(
+            select(Radnik).where(Radnik.aktivan.is_(True)).order_by(Radnik.ime)
+        ).all()
+        return [
+            {
+                "telegram_id": r.telegram_id,
+                "ime": r.ime,
+                "kvalifikacija": r.kvalifikacija,
+                "ima_pin": bool(r.pin_hash),
+            }
+            for r in rows
+        ]
+
+
+def postavi_pin(telegram_id: int, pin_hash: str | None) -> bool:
+    """Postavi (ili ukloni ako pin_hash=None) PIN za radnika. Vrati True ako OK."""
+    with db.session() as s:
+        r = s.get(Radnik, telegram_id)
+        if not r:
+            return False
+        r.pin_hash = pin_hash
+        return True
