@@ -894,11 +894,35 @@ def gen_knjiga(request: Request, key: str, situacija: int = 0):
 def radnici_prikaz(request: Request, poruka: str = ""):
     if not _authed(request):
         return _redirect_login()
+    radnici, svi_projekti = data.list_radnici_detalji()
     return templates.TemplateResponse(request, "radnici.html", {
-        "radnici": data.list_radnici_za_pin(),
+        "radnici": radnici,
+        "svi_projekti": svi_projekti,
         "poruka": poruka,
         "aktivno": "radnici",
     })
+
+
+@app.post("/radnik/dodaj")
+def radnik_dodaj(
+    request: Request,
+    telegram_id: str = Form(""),
+    ime: str = Form(""),
+    kvalifikacija: str = Form(""),
+):
+    if not _authed(request):
+        return _redirect_login()
+    ime = ime.strip()
+    if not ime:
+        return _redir("/radnici", "Ime je obavezno.")
+    try:
+        tid = int(telegram_id.strip())
+    except ValueError:
+        return _redir("/radnici", "Telegram ID mora biti broj.")
+    ok = data.dodaj_radnika(tid, ime, kvalifikacija)
+    if not ok:
+        return _redir("/radnici", f"Radnik s ID {tid} već postoji.")
+    return _redir("/radnici", f"Radnik '{ime}' dodan.")
 
 
 @app.post("/radnik/{telegram_id}/pin")
@@ -924,3 +948,21 @@ def radnik_obrisi_pin(request: Request, telegram_id: int):
         return _redirect_login()
     data.postavi_pin(telegram_id, None)
     return _redir("/radnici", "PIN uklonjen.")
+
+
+@app.post("/radnik/{telegram_id}/projekt-dodaj")
+def radnik_projekt_dodaj(request: Request, telegram_id: int, projekt_key: str = Form("")):
+    if not _authed(request):
+        return _redirect_login()
+    if not projekt_key:
+        return _redir("/radnici", "Odaberite projekt.")
+    data.dodaj_projekt_radnika(telegram_id, projekt_key)
+    return _redir("/radnici", "Radnik dodijeljen projektu.")
+
+
+@app.post("/radnik/{telegram_id}/projekt-ukloni/{projekt_key}")
+def radnik_projekt_ukloni(request: Request, telegram_id: int, projekt_key: str):
+    if not _authed(request):
+        return _redirect_login()
+    data.ukloni_projekt_radnika(telegram_id, projekt_key)
+    return _redir("/radnici", "Radnik uklonjen s projekta.")

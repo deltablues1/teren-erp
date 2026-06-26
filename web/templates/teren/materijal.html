@@ -1,0 +1,141 @@
+{% extends "teren/base.html" %}
+{% block title %}Materijal{% endblock %}
+{% set aktivno = 'materijal' %}
+
+{% block head %}
+<style>
+  .tabs { display:flex; border-bottom:2px solid var(--line); margin-bottom:16px; }
+  .tabs a {
+    flex:1; text-align:center; padding:10px 0; font-size:14px; font-weight:600;
+    color:var(--muted); text-decoration:none; border-bottom:3px solid transparent;
+    margin-bottom:-2px;
+  }
+  .tabs a.active { color:var(--brand); border-bottom-color:var(--brand); }
+  .item-row { background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+              padding:14px; margin-bottom:10px; }
+  .item-row.negativ { border-color:#fca5a5; background:#fef2f2; }
+  .item-head { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; }
+  .item-opis { font-weight:700; font-size:15px; flex:1; }
+  .item-kol  { font-size:22px; font-weight:700; color:var(--brand); white-space:nowrap; margin-left:8px; }
+  .item-kol.neg { color:var(--err); }
+  details summary { cursor:pointer; font-size:13px; color:var(--brand); font-weight:600; list-style:none; }
+  .action-form { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:8px; }
+  .action-form input[type=number] { width:88px; padding:8px; border:1px solid var(--line);
+                                    border-radius:8px; font-size:14px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{% if poruka %}
+<div class="banner banner-ok">{{ poruka }}</div>
+{% endif %}
+
+{% if not ima_projekt %}
+<div class="banner banner-warn" style="margin-bottom:12px;">
+  Odaberite projekt (tab Projekt) za prijenos na gradilište.
+</div>
+{% endif %}
+
+<div class="tabs">
+  <a href="/teren/materijal?tab=moje" class="{% if tab=='moje' %}active{% endif %}">Moje ({{ moja_zaliha|length }})</a>
+  <a href="/teren/materijal?tab=skladiste" class="{% if tab=='skladiste' %}active{% endif %}">Skladište ({{ skladiste|length }})</a>
+</div>
+
+{% if tab == 'moje' %}
+  <!-- ── Moja zaliha ── -->
+  {% if not moja_zaliha %}
+    <div class="card center" style="padding:28px 16px;">
+      <div style="font-size:36px;margin-bottom:8px;">📦</div>
+      <div class="bold">Nema zaduženog materijala</div>
+    </div>
+  {% else %}
+  {% for z in moja_zaliha %}
+  <div class="item-row {% if z.kolicina < 0 %}negativ{% endif %}">
+    <div class="item-head">
+      <div class="item-opis">{{ z.opis }}</div>
+      <div class="item-kol {% if z.kolicina < 0 %}neg{% endif %}">
+        {{ z.kolicina }} <span style="font-size:13px;font-weight:400;color:var(--muted);">{{ z.jm }}</span>
+      </div>
+    </div>
+    {% if z.kolicina < 0 %}
+    <div style="font-size:12px;color:var(--err);margin-bottom:8px;">
+      ⚠️ Negativna količina — kontaktiraje voditelja za korekciju.
+    </div>
+    {% endif %}
+    <details>
+      <summary>▸ Akcije</summary>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">
+        <form method="post" action="/teren/materijal/vrati" class="action-form">
+          <input type="hidden" name="opis" value="{{ z.opis }}">
+          <input type="hidden" name="jm"   value="{{ z.jm }}">
+          <input type="number" name="kolicina" step="0.01" min="0.01"
+                 value="{{ [z.kolicina, 0]|max }}" inputmode="decimal">
+          <button type="submit" class="btn btn-ghost btn-sm" style="flex:1;">
+            📥 Vrati u skladište
+          </button>
+        </form>
+        {% if ima_projekt %}
+        <form method="post" action="/teren/materijal/na-gradiliste" class="action-form">
+          <input type="hidden" name="opis" value="{{ z.opis }}">
+          <input type="hidden" name="jm"   value="{{ z.jm }}">
+          <input type="number" name="kolicina" step="0.01" min="0.01"
+                 value="{{ [z.kolicina, 0]|max }}" inputmode="decimal">
+          <button type="submit" class="btn btn-primary btn-sm" style="flex:1;">
+            🏗️ Na gradilište
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </details>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+{% else %}
+  <!-- ── Skladište ── -->
+  {% if not skladiste %}
+    <div class="card center" style="padding:28px 16px;">
+      <div style="font-size:36px;margin-bottom:8px;">🏪</div>
+      <div class="bold">Skladište je prazno</div>
+    </div>
+  {% else %}
+  <p class="muted" style="margin-bottom:10px;">{{ skladiste|length }} artikala u skladištu</p>
+  {% for z in skladiste %}
+  <div class="item-row {% if z.kolicina < 0 %}negativ{% endif %}">
+    <div class="item-head">
+      <div class="item-opis">{{ z.opis }}</div>
+      <div class="item-kol {% if z.kolicina < 0 %}neg{% endif %}">
+        {{ z.kolicina }} <span style="font-size:13px;font-weight:400;color:var(--muted);">{{ z.jm }}</span>
+      </div>
+    </div>
+    <details>
+      <summary>▸ Zaduži</summary>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;">
+        <form method="post" action="/teren/materijal/zaduzi-na-sebe" class="action-form">
+          <input type="hidden" name="opis" value="{{ z.opis }}">
+          <input type="hidden" name="jm"   value="{{ z.jm }}">
+          <input type="number" name="kolicina" step="0.01" min="0.01"
+                 value="1" inputmode="decimal">
+          <button type="submit" class="btn btn-warn btn-sm" style="flex:1;">
+            👤 Zaduži na sebe
+          </button>
+        </form>
+        {% if ima_projekt %}
+        <form method="post" action="/teren/materijal/zaduzi-na-gradiliste" class="action-form">
+          <input type="hidden" name="opis" value="{{ z.opis }}">
+          <input type="hidden" name="jm"   value="{{ z.jm }}">
+          <input type="number" name="kolicina" step="0.01" min="0.01"
+                 value="1" inputmode="decimal">
+          <button type="submit" class="btn btn-primary btn-sm" style="flex:1;">
+            🏗️ Na gradilište
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </details>
+  </div>
+  {% endfor %}
+  {% endif %}
+{% endif %}
+{% endblock %}

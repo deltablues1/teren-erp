@@ -1,0 +1,100 @@
+{% extends "teren/base.html" %}
+{% block title %}Troškovnik{% endblock %}
+{% set aktivno = 'troskovnik' %}
+
+{% block head %}
+<style>
+  .stavka-row {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px;
+  }
+  .stavka-head { display: flex; align-items: flex-start; gap: 10px; }
+  .stavka-sifra {
+    font-size: 11px; color: var(--muted); font-family: monospace;
+    background: #f3f4f6; padding: 3px 7px; border-radius: 6px;
+    white-space: nowrap; flex-shrink: 0; margin-top: 2px;
+  }
+  .stavka-opis { font-size: 14px; font-weight: 600; line-height: 1.35; flex: 1; }
+  .stavka-kol {
+    display: flex; gap: 14px; margin-top: 8px; padding-top: 8px;
+    border-top: 1px solid var(--line); font-size: 13px;
+  }
+  .kol-blok { display: flex; flex-direction: column; gap: 1px; }
+  .kol-label { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .kol-val { font-weight: 700; font-size: 15px; }
+  .kol-val.izvedeno { color: var(--ok); }
+  .progress-bar-wrap {
+    height: 6px; background: #e5e7eb; border-radius: 4px; margin-top: 8px; overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%; border-radius: 4px; background: var(--ok);
+    transition: width .3s;
+  }
+  .sekcija-glava {
+    font-size: 12px; font-weight: 700; letter-spacing: .05em;
+    text-transform: uppercase; color: var(--brand);
+    padding: 14px 2px 6px; border-bottom: 2px solid var(--brand);
+    margin-bottom: 8px; margin-top: 4px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2>Troškovnik</h2>
+
+{% if not stavke %}
+  <div class="card center" style="padding:32px 16px;">
+    <div style="font-size:40px;margin-bottom:10px;">📋</div>
+    <div class="bold" style="margin-bottom:6px;">Nema stavki troškovnika</div>
+    <div class="muted">Odaberite projekt (tab Projekt) ili nema unesenih stavki.</div>
+  </div>
+{% else %}
+
+{% for s in stavke %}
+  {% if s.je_sekcija %}
+    <div class="sekcija-glava">{{ s.opis or s.sekcija or '—' }}</div>
+  {% else %}
+    <div class="stavka-row">
+      <div class="stavka-head">
+        {% if s.sifra %}<div class="stavka-sifra">{{ s.sifra }}</div>{% endif %}
+        <div class="stavka-opis">{{ s.opis }}</div>
+      </div>
+
+      {% if s.ugovorena or s.izvedeno %}
+      <div class="stavka-kol">
+        {% if s.ugovorena %}
+        <div class="kol-blok">
+          <div class="kol-label">Plan</div>
+          <div class="kol-val">{{ s.ugovorena }} <span style="font-size:12px;font-weight:400;color:var(--muted);">{{ s.jm }}</span></div>
+        </div>
+        {% endif %}
+        <div class="kol-blok">
+          <div class="kol-label">Ugrađeno</div>
+          <div class="kol-val izvedeno">{{ s.izvedeno or 0 }} <span style="font-size:12px;font-weight:400;color:var(--muted);">{{ s.jm }}</span></div>
+        </div>
+        {% if s.ugovorena and s.ugovorena > 0 %}
+        {% set posto = ((s.izvedeno or 0) / s.ugovorena * 100)|round|int %}
+        <div class="kol-blok" style="flex:1;justify-content:flex-end;">
+          <div class="kol-label" style="text-align:right;">{{ [posto, 100]|min }}%</div>
+        </div>
+      </div>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" style="width:{{ [posto, 100]|min }}%;"></div>
+      </div>
+        {% else %}
+      </div>
+        {% endif %}
+      {% else %}
+      <div class="muted" style="margin-top:6px;font-size:12px;">{{ s.jm }}</div>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endfor %}
+
+{% endif %}
+
+<div style="margin-top:16px;"></div>
+<div class="muted center" style="font-size:12px;">
+  Prikazuje se ugrađena količina bez cijena.
+</div>
+{% endblock %}

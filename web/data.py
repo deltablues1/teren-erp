@@ -949,7 +949,8 @@ def get_radnik_by_pin(pin_hash: str) -> dict[str, Any] | None:
 
 
 def get_projekti_za_radnika(telegram_id: int) -> list[dict[str, Any]]:
-    """Projekti na kojima je radnik dodijeljen (aktivni)."""
+    """Projekti na kojima je radnik dodijeljen. Ako nije ni na jednom,
+    vraća sve aktivne projekte (fallback za admina/testiranje)."""
     with db.session() as s:
         rows = s.execute(
             select(Projekt)
@@ -960,7 +961,13 @@ def get_projekti_za_radnika(telegram_id: int) -> list[dict[str, Any]]:
             )
             .order_by(Projekt.naziv)
         ).scalars().all()
-        return [{"key": p.key, "naziv": p.naziv, "adresa": p.adresa} for p in rows]
+        if rows:
+            return [{"key": p.key, "naziv": p.naziv, "adresa": p.adresa} for p in rows]
+        # fallback: vrati sve aktivne projekte
+        svi = s.scalars(
+            select(Projekt).where(Projekt.aktivan.is_(True)).order_by(Projekt.naziv)
+        ).all()
+        return [{"key": p.key, "naziv": p.naziv, "adresa": p.adresa} for p in svi]
 
 
 def get_zaliha_radnika(telegram_id: int) -> list[dict[str, Any]]:
@@ -996,3 +1003,87 @@ def postavi_pin(telegram_id: int, pin_hash: str | None) -> bool:
             return False
         r.pin_hash = pin_hash
         return True
+
+
+def dodaj_radnika(telegram_id: int, ime: str, kvalifikacija: str = "") -> bool:
+    """Dodaj novog radnika. Vrati False ako telegram_id već postoji."""
+    with db.session() as s:
+        if s.get(Radnik, telegram_id):
+            return False
+        s.add(Radnik(
+            telegram_id=telegram_id,
+            ime=(ime or "").strip()[:255],
+            kvalifikacija=(kvalifikacija or "").strip()[:255],
+            aktivan=True,
+        ))
+        return True
+
+
+def get_radnik_projekti(telegram_id: int) -> list[str]:
+    """Ključevi projekata na kojima je radnik dodijeljen."""
+    with db.session() as s:
+        rows = s.scalars(
+            select(ProjektRadnik.projekt_key)
+            .where(ProjektRadnik.telegram_id == telegram_id)
+        ).all()
+        return list(rows)
+
+
+def dodaj_projekt_radnika(telegram_id: int, projekt_key: str) -> bool:
+    """Dodijeli radnika projektu. Vrati False ako veza već postoji."""
+    with db.session() as s:
+        existing = s.scalar(
+            select(ProjektRadnik).where(
+                ProjektRadnik.telegram_id == telegram_id,
+                ProjektRadnik.projekt_key == projekt_key,
+            )
+        )
+        if existing:
+            return False
+        s.add(ProjektRadnik(telegram_id=telegram_id, projekt_key=projekt_key))
+        return True
+
+
+def ukloni_projekt_radnika(telegram_id: int, projekt_key: str) -> bool:
+    """Ukloni radnika s projekta."""
+    with db.session() as s:
+        pr = s.scalar(
+            select(ProjektRadnik).where(
+                ProjektRadnik.telegram_id == telegram_id,
+                ProjektRadnik.projekt_key == projekt_key,
+            )
+        )
+        if not pr:
+            return False
+        s.delete(pr)
+        return True
+
+
+def list_radnici_detalji() -> list[dict[str, Any]]:
+    """Svi aktivni radnici s popisom projekata i PIN statusom."""
+    with db.session() as s:
+        radnici = s.scalars(
+            select(Radnik).where(Radnik.aktivan.is_(True)).order_by(Radnik.ime)
+        ).all()
+        projekti_po_r: dict[int, list[str]] = {}
+        pr_rows = s.execute(
+            select(ProjektRadnik.telegram_id, ProjektRadnik.projekt_key,
+                   Projekt.naziv)
+            .join(Projekt, Projekt.key == ProjektRadnik.projekt_key)
+            .where(Projekt.aktivan.is_(True))
+        ).all()
+        for tid, pkey, pnaziv in pr_rows:
+            projekti_po_r.setdefault(tid, []).append({"key": pkey, "naziv": pnaziv})
+        svi_projekti = s.scalars(
+            select(Projekt).where(Projekt.aktivan.is_(True)).order_by(Projekt.naziv)
+        ).all()
+        return [
+            {
+                "telegram_id": r.telegram_id,
+                "ime": r.ime,
+                "kvalifikacija": r.kvalifikacija,
+                "ima_pin": bool(r.pin_hash),
+                "projekti": projekti_po_r.get(r.telegram_id, []),
+            }
+            for r in radnici
+        ], [{"key": p.key, "naziv": p.naziv} for p in svi_projekti]

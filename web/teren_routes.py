@@ -345,11 +345,112 @@ def zadatak_odgodi(request: Request, zadatak_id: int):
 
 @router.get("/zaliha")
 def zaliha_get(request: Request):
+    return RedirectResponse(url="/teren/materijal", status_code=303)
+
+
+@router.get("/materijal")
+def materijal_get(request: Request, tab: str = "moje", poruka: str = ""):
     if not _authed(request):
         return _redirect_login()
     radnik_id = request.session["teren_radnik_id"]
-    zaliha = wd.get_zaliha_radnika(radnik_id)
-    return _tmpl("zaliha.html", request, {"zaliha": zaliha})
+    projekt_key = request.session.get("teren_projekt_key", "")
+    from services import skladiste as skl
+    moja_zaliha = wd.get_zaliha_radnika(radnik_id)
+    skladiste = skl.stanje("skladiste", "") if skl.ENABLED else []
+    return _tmpl("materijal.html", request, {
+        "tab": tab,
+        "moja_zaliha": moja_zaliha,
+        "skladiste": skladiste,
+        "poruka": poruka,
+        "ima_projekt": bool(projekt_key),
+        "aktivno": "materijal",
+    })
+
+
+def _parse_kolicina(s: str) -> float | None:
+    try:
+        q = float(s.replace(",", "."))
+        return q if q > 0 else None
+    except Exception:
+        return None
+
+
+@router.post("/materijal/vrati")
+def materijal_vrati(request: Request, opis: str = Form(""), jm: str = Form(""), kolicina: str = Form("")):
+    """Povrat materijala s radnika nazad u skladište."""
+    if not _authed(request):
+        return _redirect_login()
+    radnik_id = request.session["teren_radnik_id"]
+    q = _parse_kolicina(kolicina)
+    if not q:
+        return RedirectResponse(url="/teren/materijal?tab=moje&poruka=Nevažeća+količina.", status_code=303)
+    from services import skladiste as skl
+    skl.povrat(opis, q, od_tip="radnik", od_id=str(radnik_id), jm=jm, created_by=radnik_id)
+    return RedirectResponse(url="/teren/materijal?tab=moje&poruka=Vraćeno+u+skladište.", status_code=303)
+
+
+@router.post("/materijal/na-gradiliste")
+def materijal_na_gradiliste(request: Request, opis: str = Form(""), jm: str = Form(""), kolicina: str = Form("")):
+    """Prijenos materijala s radnika na gradilište."""
+    if not _authed(request):
+        return _redirect_login()
+    radnik_id = request.session["teren_radnik_id"]
+    projekt_key = request.session.get("teren_projekt_key", "")
+    if not projekt_key:
+        return RedirectResponse(url="/teren/materijal?tab=moje&poruka=Odaberi+projekt+prvo.", status_code=303)
+    q = _parse_kolicina(kolicina)
+    if not q:
+        return RedirectResponse(url="/teren/materijal?tab=moje&poruka=Nevažeća+količina.", status_code=303)
+    from services import skladiste as skl
+    skl.prijenos(opis, q, od_tip="radnik", od_id=str(radnik_id),
+                 na_tip="gradiliste", na_id=projekt_key, jm=jm, created_by=radnik_id)
+    return RedirectResponse(url="/teren/materijal?tab=moje&poruka=Preneseno+na+gradilište.", status_code=303)
+
+
+@router.post("/materijal/zaduzi-na-sebe")
+def materijal_zaduzi_na_sebe(request: Request, opis: str = Form(""), jm: str = Form(""), kolicina: str = Form("")):
+    """Zaduženje iz centralnog skladišta na radnika."""
+    if not _authed(request):
+        return _redirect_login()
+    radnik_id = request.session["teren_radnik_id"]
+    q = _parse_kolicina(kolicina)
+    if not q:
+        return RedirectResponse(url="/teren/materijal?tab=skladiste&poruka=Nevažeća+količina.", status_code=303)
+    from services import skladiste as skl
+    skl.zaduzi(opis, q, na_tip="radnik", na_id=str(radnik_id), jm=jm, created_by=radnik_id)
+    return RedirectResponse(url="/teren/materijal?tab=moje&poruka=Zaduženo+na+vas.", status_code=303)
+
+
+@router.post("/materijal/zaduzi-na-gradiliste")
+def materijal_zaduzi_na_gradiliste(request: Request, opis: str = Form(""), jm: str = Form(""), kolicina: str = Form("")):
+    """Zaduženje iz centralnog skladišta direktno na gradilište."""
+    if not _authed(request):
+        return _redirect_login()
+    radnik_id = request.session["teren_radnik_id"]
+    projekt_key = request.session.get("teren_projekt_key", "")
+    if not projekt_key:
+        return RedirectResponse(url="/teren/materijal?tab=skladiste&poruka=Odaberi+projekt+prvo.", status_code=303)
+    q = _parse_kolicina(kolicina)
+    if not q:
+        return RedirectResponse(url="/teren/materijal?tab=skladiste&poruka=Nevažeća+količina.", status_code=303)
+    from services import skladiste as skl
+    skl.zaduzi(opis, q, na_tip="gradiliste", na_id=projekt_key, jm=jm, created_by=radnik_id)
+    return RedirectResponse(url="/teren/materijal?tab=skladiste&poruka=Zaduženo+na+gradilište.", status_code=303)
+
+
+@router.get("/troskovnik")
+def troskovnik_get(request: Request):
+    if not _authed(request):
+        return _redirect_login()
+    projekt_key = request.session.get("teren_projekt_key", "")
+    stavke = []
+    if projekt_key:
+        pregled = wd.troskovnik_pregled(projekt_key)
+        stavke = pregled.get("stavke", [])
+    return _tmpl("troskovnik.html", request, {
+        "stavke": stavke,
+        "aktivno": "troskovnik",
+    })
 
 
 # ── privatno: Telegram obavijest voditelju ────────────────────────────────────

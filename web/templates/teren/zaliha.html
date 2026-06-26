@@ -4,7 +4,17 @@
 
 {% block content %}
 <h2>Moja zaliha</h2>
-<p class="muted" style="margin-bottom:16px;">Materijal trenutno zaduženem na vas (iz skladišta).</p>
+<p class="muted" style="margin-bottom:12px;">Materijal zadužen na vas. Možete ga vratiti u skladište ili prenijeti na aktivo gradilište.</p>
+
+{% if poruka %}
+<div class="banner banner-ok">{{ poruka }}</div>
+{% endif %}
+
+{% if not ima_projekt %}
+<div class="banner banner-warn" style="margin-bottom:12px;">
+  Odaberite projekt (tab Projekt) da biste mogli prebaciti materijal na gradilište.
+</div>
+{% endif %}
 
 {% if not zaliha %}
   <div class="card center" style="padding:32px 16px;">
@@ -14,17 +24,54 @@
   </div>
 {% else %}
   <p class="muted" style="margin-bottom:10px;">{{ zaliha|length }} vrsta materijala</p>
+
   {% for z in zaliha %}
-  <div class="card" style="padding:12px 14px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;">
+  <div class="card" style="padding:14px;">
+    <!-- naziv + količina -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
       <div style="flex:1;">
-        <div class="card-title" style="font-size:14px;">{{ z.opis }}</div>
-        {% if z.jm %}<div class="card-sub">{{ z.jm }}</div>{% endif %}
+        <div class="card-title" style="font-size:15px;">{{ z.opis }}</div>
+        <div class="card-sub">{{ z.jm }}</div>
       </div>
-      <div style="font-size:22px;font-weight:700;color:var(--brand);text-align:right;">
-        {{ z.kolicina }}<span style="font-size:13px;font-weight:400;color:var(--muted);margin-left:3px;">{{ z.jm }}</span>
+      <div style="font-size:24px;font-weight:700;color:var(--brand);white-space:nowrap;margin-left:8px;">
+        {{ z.kolicina }} <span style="font-size:13px;font-weight:400;color:var(--muted);">{{ z.jm }}</span>
       </div>
     </div>
+
+    <!-- Akcije u collapse-u da ne zauzima mjesta -->
+    <details>
+      <summary style="cursor:pointer;font-size:13px;color:var(--brand);font-weight:600;list-style:none;">
+        ▸ Akcije (vrati / prenesi)
+      </summary>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:10px;">
+
+        <!-- Vrati u skladište -->
+        <form method="post" action="/teren/zaliha/vrati" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <input type="hidden" name="opis" value="{{ z.opis }}">
+          <input type="hidden" name="jm" value="{{ z.jm }}">
+          <input type="number" name="kolicina" step="0.01" min="0.01" max="{{ z.kolicina }}"
+                 value="{{ z.kolicina }}" inputmode="decimal"
+                 style="width:90px;padding:8px;border:1px solid var(--line);border-radius:8px;font-size:14px;">
+          <button type="submit" class="btn btn-ghost btn-sm" style="flex:1;">
+            📥 Vrati u skladište
+          </button>
+        </form>
+
+        <!-- Prenesi na gradilište -->
+        {% if ima_projekt %}
+        <form method="post" action="/teren/zaliha/na-gradiliste" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <input type="hidden" name="opis" value="{{ z.opis }}">
+          <input type="hidden" name="jm" value="{{ z.jm }}">
+          <input type="number" name="kolicina" step="0.01" min="0.01" max="{{ z.kolicina }}"
+                 value="{{ z.kolicina }}" inputmode="decimal"
+                 style="width:90px;padding:8px;border:1px solid var(--line);border-radius:8px;font-size:14px;">
+          <button type="submit" class="btn btn-primary btn-sm" style="flex:1;">
+            🏗️ Na gradilište
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </details>
   </div>
   {% endfor %}
 

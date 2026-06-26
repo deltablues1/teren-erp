@@ -27,4 +27,5 @@ logging.getLogger().addHandler(_fh)
 
 if __name__ == "__main__":
     print("Web panel: http://127.0.0.1:8000  (Ctrl+C za prekid)")
-    uvicorn.run("web.app:app", host="127.0.0.1", port=8000, reload=False)
+    print("Lokalna mreža: http://192.168.100.5:8000/teren  (za mobitele na istom WiFi-u)")
+    uvicorn.run("web.app:app", host="0.0.0.0", port=8000, reload=False)
